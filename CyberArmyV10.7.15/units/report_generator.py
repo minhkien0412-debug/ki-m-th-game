@@ -1,0 +1,149 @@
+"""
+Report Generator Module
+Export findings to Markdown reports
+"""
+
+from typing import Dict, Any, List, Optional
+from pathlib import Path
+from datetime import datetime
+
+
+class ReportGenerator:
+    """Generate security assessment reports"""
+    
+    def __init__(self, config: Dict[str, Any]):
+        self.config = config
+        self.reporting_config = config.get('reporting', {})
+        self.output_dir = Path(self.reporting_config.get('output_dir', 'state/reports'))
+        self._ensure_output_dir()
+    
+    def _ensure_output_dir(self):
+        """Ensure output directory exists"""
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+    
+    def generate_report(self, mission_data: Dict[str, Any], 
+                       findings: List[Dict[str, Any]],
+                       format: str = "markdown") -> str:
+        """Generate a report from mission data and findings"""
+        if format == "markdown":
+            return self._generate_markdown(mission_data, findings)
+        else:
+            return self._generate_markdown(mission_data, findings)
+    
+    def _generate_markdown(self, mission_data: Dict[str, Any], 
+                          findings: List[Dict[str, Any]]) -> str:
+        """Generate Markdown report"""
+        report = []
+        
+        # Header
+        report.append("# CyberArmy Security Assessment Report")
+        report.append("")
+        report.append(f"**Mission ID:** {mission_data.get('mission_id', 'N/A')}")
+        report.append(f"**Target:** {mission_data.get('target_name', 'N/A')}")
+        report.append(f"**Base URL:** {mission_data.get('base_url', 'N/A')}")
+        report.append(f"**Generated:** {datetime.utcnow().isoformat()}")
+        report.append("")
+        
+        # Executive Summary
+        report.append("## Executive Summary")
+        report.append("")
+        summary = self._calculate_summary(findings)
+        report.append(f"**Total Findings:** {summary['total']}")
+        report.append("")
+        report.append("| Severity | Count |")
+        report.append("|----------|-------|")
+        for sev in ['critical', 'high', 'medium', 'low', 'info']:
+            count = summary.get(sev, 0)
+            report.append(f"| {sev.upper()} | {count} |")
+        report.append("")
+        
+        # Findings by Status
+        report.append("## Findings by Status")
+        report.append("")
+        status_counts = {}
+        for f in findings:
+            status = f.get('status', 'unknown')
+            status_counts[status] = status_counts.get(status, 0) + 1
+        
+        for status, count in status_counts.items():
+            report.append(f"- **{status}**: {count}")
+        report.append("")
+        
+        # Detailed Findings
+        report.append("## Detailed Findings")
+        report.append("")
+        
+        # Sort by severity
+        severity_order = {'critical': 0, 'high': 1, 'medium': 2, 'low': 3, 'info': 4}
+        sorted_findings = sorted(findings, key=lambda x: severity_order.get(x.get('severity', 'info'), 5))
+        
+        for i, finding in enumerate(sorted_findings, 1):
+            report.append(f"### Finding #{i}: {finding.get('title', 'Untitled')}")
+            report.append("")
+            report.append(f"- **ID:** {finding.get('id', 'N/A')}")
+            report.append(f"- **Type:** {finding.get('type', 'N/A')}")
+            report.append(f"- **Severity:** {finding.get('severity', 'N/A').upper()}")
+            report.append(f"- **Status:** {finding.get('status', 'N/A')}")
+            report.append(f"- **URL:** {finding.get('url', 'N/A')}")
+            report.append("")
+            
+            if finding.get('description'):
+                report.append("**Description:**")
+                report.append(finding['description'])
+                report.append("")
+            
+            if finding.get('evidence'):
+                report.append("**Evidence:**")
+                report.append("```json")
+                import json
+                report.append(json.dumps(finding.get('evidence', {}), indent=2))
+                report.append("```")
+                report.append("")
+            
+            report.append("---")
+            report.append("")
+        
+        # Recommendations
+        report.append("## Recommendations")
+        report.append("")
+        report.append("Based on the findings above, the following actions are recommended:")
+        report.append("")
+        
+        if summary.get('critical', 0) > 0:
+            report.append("1. **IMMEDIATE ACTION REQUIRED**: Address critical findings before deployment")
+        if summary.get('high', 0) > 0:
+            report.append("2. **HIGH PRIORITY**: Review and remediate high severity issues")
+        if summary.get('medium', 0) > 0:
+            report.append("3. **MEDIUM PRIORITY**: Schedule remediation for medium severity findings")
+        
+        report.append("")
+        report.append("---")
+        report.append("*Report generated by CyberArmy V10.7.15*")
+        
+        return "\n".join(report)
+    
+    def _calculate_summary(self, findings: List[Dict[str, Any]]) -> Dict[str, int]:
+        """Calculate findings summary"""
+        summary = {'total': len(findings)}
+        for finding in findings:
+            severity = finding.get('severity', 'info')
+            summary[severity] = summary.get(severity, 0) + 1
+        return summary
+    
+    def save_report(self, content: str, filename: str) -> str:
+        """Save report to file"""
+        filepath = self.output_dir / filename
+        with open(filepath, 'w') as f:
+            f.write(content)
+        return str(filepath)
+    
+    def generate_and_save(self, mission_data: Dict[str, Any],
+                         findings: List[Dict[str, Any]],
+                         filename: str = None) -> str:
+        """Generate report and save to file"""
+        if not filename:
+            timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+            filename = f"report_{timestamp}.md"
+        
+        content = self.generate_report(mission_data, findings)
+        return self.save_report(content, filename)

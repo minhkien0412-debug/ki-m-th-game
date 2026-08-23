@@ -1,0 +1,73 @@
+# CyberArmy V10.7.15 - Game Security Testing System Configuration
+
+# Target configuration
+target:
+  name: "Game Security Test"
+  base_url: "https://example-game.com"
+  allowed_hosts:
+    - "example-game.com"
+    - "*.example-game.com"
+    - "api.example-game.com"
+  allowed_paths:
+    - "/api/*"
+    - "/game/*"
+    - "/assets/*"
+  blocked_paths:
+    - "/admin/*"
+    - "/internal/*"
+    - "/debug/*"
+
+# Policy configuration
+policy:
+  raw_file: "policies/raw/banco_plata_policy.json"
+  manifest_file: "policies/manifest/banco_plata_manifest.json"
+  required_hash: "sha256:placeholder_hash_here"
+  acknowledged: false
+  kill_switch_enabled: true
+
+# Rate limiting
+rate_limit:
+  requests_per_second: 5
+  requests_per_minute: 100
+  concurrent_connections: 3
+
+# Reconnaissance settings
+recon:
+  subfinder_enabled: true
+  crtsh_enabled: true
+  passive_only: true
+
+# Analysis settings
+analysis:
+  web_analyzer_enabled: true
+  api_analyzer_enabled: true
+  code_analyst_enabled: false
+  extract_forms: true
+  extract_endpoints: true
+
+# Validation settings (CONSERVATIVE - safe only)
+validation:
+  enabled: false
+  safe_validators_only: true
+  reflection_test: false
+  authorization_boundary_test: false
+  manual_review_required: true
+
+# Evidence storage
+evidence:
+  store_traffic: true
+  redact_secrets: true
+  evidence_dir: "state/evidence"
+
+# Reporting
+reporting:
+  output_dir: "state/reports"
+  format: "markdown"
+  include_evidence: true
+  verbose: true
+
+# Logging
+logging:
+  level: "INFO"
+  file: "state/mission.log"
+  console: true
