@@ -1,0 +1,57 @@
+{
+  "manifest_version": "1.0",
+  "source_policy": "policies/raw/banco_plata_policy.json",
+  "source_hash": "sha256:a223a00a50858150b045d541aabee378ccaa5f486c959ff88413ab6445c0c30b",
+  "normalized_scope": {
+    "allowed_hosts": [
+      "example-game.com",
+      "*.example-game.com",
+      "api.example-game.com"
+    ],
+    "allowed_paths": [
+      "/api/*",
+      "/game/*",
+      "/assets/*"
+    ],
+    "blocked_paths": [
+      "/admin/*",
+      "/internal/*",
+      "/debug/*",
+      "/.git/*",
+      "/.env*"
+    ],
+    "blocked_parameters": [
+      "password",
+      "token",
+      "secret",
+      "key",
+      "auth"
+    ]
+  },
+  "security_rules": {
+    "rate_limiting": {
+      "enabled": true,
+      "requests_per_second": 5,
+      "requests_per_minute": 100
+    },
+    "safe_testing_only": true,
+    "prohibited_tests": [
+      "destructive",
+      "authentication_bypass",
+      "sql_injection",
+      "xss_payload_injection"
+    ]
+  },
+  "authorization_status": {
+    "type": "bug_bounty",
+    "platform": "HackerOne",
+    "acknowledged": false,
+    "kill_switch_enabled": true,
+    "verified": false
+  },
+  "metadata": {
+    "created_at": "2024-01-01T00:00:00Z",
+    "policy_id": "GAME-SEC-001",
+    "manifest_id": "MANIFEST-GAME-SEC-001"
+  }
+}

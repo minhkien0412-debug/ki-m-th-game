@@ -1,0 +1,53 @@
+{
+  "program": "Game Security Testing Program",
+  "version": "1.0",
+  "scope": {
+    "allowed_hosts": [
+      "example-game.com",
+      "*.example-game.com",
+      "api.example-game.com"
+    ],
+    "allowed_paths": [
+      "/api/*",
+      "/game/*",
+      "/assets/*"
+    ],
+    "blocked_paths": [
+      "/admin/*",
+      "/internal/*",
+      "/debug/*",
+      "/.git/*",
+      "/.env*"
+    ],
+    "blocked_parameters": [
+      "password",
+      "token",
+      "secret",
+      "key",
+      "auth"
+    ]
+  },
+  "rules": {
+    "rate_limiting": {
+      "enabled": true,
+      "requests_per_second": 5,
+      "requests_per_minute": 100
+    },
+    "safe_testing_only": true,
+    "no destructive tests": true,
+    "no authentication bypass attempts": true,
+    "no sql injection testing": true,
+    "no xss payload injection": true
+  },
+  "authorization": {
+    "type": "bug_bounty",
+    "platform": "HackerOne",
+    "acknowledged": false,
+    "kill_switch": true
+  },
+  "metadata": {
+    "created_at": "2024-01-01T00:00:00Z",
+    "updated_at": "2024-01-01T00:00:00Z",
+    "policy_id": "GAME-SEC-001"
+  }
+}
