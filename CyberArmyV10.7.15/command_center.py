@@ -68,6 +68,19 @@ Examples:
                         help='Run bounded mutation fuzzing against a self-hosted binary')
     parser.add_argument('--lab-fuzz-cases', type=int, default=25,
                         help='Number of local fuzz cases (default: 25)')
+    parser.add_argument('--console-validate', action='store_true',
+                        help='Validate the authorized dev/test-kit integration profile')
+    parser.add_argument('--console-plan', metavar='ARTIFACT',
+                        help='Print the official-SDK argv for an owned console build')
+    parser.add_argument('--console-run', metavar='ARTIFACT',
+                        help='Run an owned build through the configured official SDK tool')
+    parser.add_argument('--console-import-crash', metavar='CRASH_FILE',
+                        help='Import a locally exported crash or log with hashes')
+    parser.add_argument('--console-symbolicate', nargs=2,
+                        metavar=('CRASH_FILE', 'SYMBOL_FILE'),
+                        help='Run the configured offline symbolication tool')
+    parser.add_argument('--console-index-corpus', metavar='CORPUS_DIRECTORY',
+                        help='Create a deterministic manifest for an owned corpus')
     
     args = parser.parse_args()
     
@@ -265,6 +278,75 @@ Examples:
                 sys.exit(0)
         except (LocalLabError, OSError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
             print(f"[BLOCKED] Local lab operation failed: {exc}")
+            sys.exit(1)
+
+    console_requested = any((
+        args.console_validate,
+        args.console_plan,
+        args.console_run,
+        args.console_import_crash,
+        args.console_symbolicate,
+        args.console_index_corpus,
+    ))
+    if console_requested:
+        from units.console_lab_policy import ConsoleLabPolicy
+        from units.local_lab_policy import LocalLabError
+
+        console_policy = ConsoleLabPolicy(config)
+        require_execution = bool(args.console_run)
+        valid, errors = console_policy.validate(require_execution=require_execution)
+        print("\n[Authorized PlayStation Dev/Test-Kit Lab]")
+        print(f"Valid: {valid}")
+        for error in errors:
+            print(f"  ERROR: {error}")
+
+        if args.console_validate:
+            sys.exit(0 if valid else 1)
+        if not valid:
+            print('[BLOCKED] Complete the console_lab profile before continuing.')
+            sys.exit(1)
+
+        try:
+            if args.console_plan or args.console_run:
+                from units.console_kit_adapter import ConsoleKitAdapter
+
+                adapter = ConsoleKitAdapter(config)
+                result = (
+                    adapter.run_artifact(args.console_run)
+                    if args.console_run
+                    else adapter.plan_artifact(args.console_plan)
+                )
+                print(json.dumps(result, indent=2))
+                sys.exit(0 if result.get('successful', True) else 1)
+
+            if args.console_import_crash:
+                from units.console_artifacts import ConsoleArtifactManager
+
+                result = ConsoleArtifactManager(config).import_crash(
+                    args.console_import_crash
+                )
+                print(json.dumps(result, indent=2))
+                sys.exit(0)
+
+            if args.console_symbolicate:
+                from units.console_artifacts import ConsoleArtifactManager
+
+                result = ConsoleArtifactManager(config).symbolicate(
+                    *args.console_symbolicate
+                )
+                print(json.dumps(result, indent=2))
+                sys.exit(0 if result['return_code'] == 0 else 1)
+
+            if args.console_index_corpus:
+                from units.console_artifacts import ConsoleCorpusIndexer
+
+                result = ConsoleCorpusIndexer(config).index(
+                    args.console_index_corpus
+                )
+                print(json.dumps(result, indent=2))
+                sys.exit(0)
+        except (LocalLabError, OSError, RuntimeError, ValueError) as exc:
+            print(f"[BLOCKED] Console lab operation failed: {exc}")
             sys.exit(1)
 
     # Check authorization gate

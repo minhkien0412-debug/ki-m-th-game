@@ -1,0 +1,41 @@
+# Merge this section into config.yaml only after PlayStation partner approval,
+# official SDK installation, dev/test-kit provisioning, and network isolation.
+console_lab:
+  enabled: true
+  partner_access_confirmed: true
+  official_sdk_installed: true
+  dev_or_test_kit_only: true
+  human_in_the_loop: true
+  network_isolated: true
+  allow_device_execution: false  # keep false while validating dry-run output
+  authorization_reference: "INTERNAL-OWNED-GAME-LAB-001"
+  platform: "ps5"
+  kit_id: "REPLACE-WITH-NON-SECRET-KIT-ID"
+  workspace_root: "C:/replace/with/isolated/owned-game-workspace"
+  process_timeout_seconds: 30
+  max_artifact_bytes: 1073741824
+  max_crash_bytes: 268435456
+  max_corpus_files: 1000
+  allowed_artifact_extensions: [".pkg", ".self", ".elf"]
+  allowed_crash_extensions: [".dmp", ".core", ".log", ".txt", ".json"]
+  artifact_output_dir: "state/console_artifacts"
+  # Add only non-secret environment variable names required by the official
+  # tool. Their values are inherited at runtime and are never written here.
+  sdk_environment_allowlist: []
+
+  # Replace only with argv documented by the official SDK available to your
+  # partner account. Do not paste credentials into this file.
+  run_command:
+    - "C:/absolute/path/to/official-sdk-tool.exe"
+    - "--kit"
+    - "{kit_id}"
+    - "--run-owned-build"
+    - "{artifact}"
+  symbolicate_command:
+    - "C:/absolute/path/to/official-symbolicator.exe"
+    - "--crash"
+    - "{crash}"
+    - "--symbols"
+    - "{symbols}"
+    - "--output"
+    - "{output_dir}"

@@ -109,3 +109,49 @@ The following directives from the supplied methodology are deliberately not
 implemented: payment/fulfillment response rewriting, premium entitlement
 override, live packet patch-and-forward, TLS pinning bypass, memory return-value
 patching, kernel exploitation, shellcode and ROP construction.
+
+## Authorized PlayStation dev/test-kit bridge
+
+The console bridge connects this repository to tools from an official local
+PlayStation SDK installation without embedding proprietary binaries, command
+names, credentials, or documentation. Sony's public partner page states that
+registered partners receive development support, tools and testing systems:
+<https://partners.playstation.net/>. Partner registration and the SDK/dev-kit
+provisioning process therefore remain external prerequisites.
+
+This bridge adds the repository-side pieces that were previously missing:
+
+- fail-closed attestations for partner access, official SDK installation,
+  dev/test-kit ownership, human review and network isolation;
+- a dry-run command planner that hashes the owned build before deployment;
+- an opt-in SDK runner using an argv list and `shell=False`;
+- crash/log import with SHA-256 and a JSON chain-of-custody manifest;
+- an offline symbolication hook using the official tool configured locally;
+- deterministic indexing of game-input corpora for repeatable testing.
+
+Start from `examples/console_lab.example.yaml`. Keep
+`allow_device_execution: false` until the dry-run command is reviewed. The
+first item of each configured command must be an existing `.exe`; supported
+placeholders are `{artifact}`, `{kit_id}`, `{crash}`, `{symbols}`, and
+`{output_dir}`. Secrets must not be stored in the YAML file.
+
+```bash
+python command_center.py --console-validate
+python command_center.py --console-plan builds/owned-game.pkg
+python command_center.py --console-index-corpus samples/owned-corpus
+python command_center.py --console-import-crash inbox/exported-crash.dmp
+python command_center.py --console-symbolicate state/console_artifacts/imports/ID/exported-crash.dmp symbols/owned-symbol-map.log
+```
+
+After validating the generated argv and the physical/network lab boundary, set
+`allow_device_execution: true` and run an owned build on the configured kit:
+
+```bash
+python command_center.py --console-run builds/owned-game.pkg
+```
+
+The bridge does not turn a retail PS4/PS5 into a dev kit, install an SDK, obtain
+partner approval, or bypass platform protections. SDK-specific command names
+must be copied from the official documentation available to the approved
+partner account. HackerOne testing remains separately governed by the current
+program scope in the `hackerone` profile.

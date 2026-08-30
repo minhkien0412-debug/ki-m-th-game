@@ -33,6 +33,7 @@ wheels/
 **/state/hackerone_observations/
 **/state/lab_traces/
 **/state/lab_fuzz/
+**/state/console_artifacts/
 
 # Environment
 .env

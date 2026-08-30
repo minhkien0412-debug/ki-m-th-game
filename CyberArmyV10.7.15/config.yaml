@@ -113,3 +113,32 @@ local_lab:
   allowed_executable_extensions: [".exe"]
   trace_output_dir: "state/lab_traces"
   fuzz_output_dir: "state/lab_fuzz"
+
+# Authorized PlayStation developer/test-kit bridge. The project does not ship
+# Sony SDK binaries or credentials. Register at https://partners.playstation.net/
+# and use only commands documented for your official SDK version.
+console_lab:
+  enabled: false
+  partner_access_confirmed: false
+  official_sdk_installed: false
+  dev_or_test_kit_only: false
+  human_in_the_loop: true
+  network_isolated: false
+  allow_device_execution: false
+  authorization_reference: ""
+  platform: ""  # ps4 or ps5
+  kit_id: ""
+  workspace_root: "."
+  process_timeout_seconds: 30
+  max_artifact_bytes: 1073741824
+  max_crash_bytes: 268435456
+  max_corpus_files: 1000
+  allowed_artifact_extensions: [".pkg", ".self", ".elf"]
+  allowed_crash_extensions: [".dmp", ".core", ".log", ".txt", ".json"]
+  artifact_output_dir: "state/console_artifacts"
+  sdk_environment_allowlist: []
+  # YAML argv lists; the first item must be the absolute path to an official
+  # SDK executable. Supported placeholders are {artifact}, {kit_id}, {crash},
+  # {symbols}, and {output_dir}. No shell is used.
+  run_command: []
+  symbolicate_command: []

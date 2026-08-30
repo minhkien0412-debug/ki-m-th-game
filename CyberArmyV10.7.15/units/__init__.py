@@ -34,6 +34,9 @@ from . import api_boundary_lab
 from . import protocol_corpus
 from . import observation_instrumentation
 from . import local_crash_fuzzer
+from . import console_lab_policy
+from . import console_kit_adapter
+from . import console_artifacts
 
 __all__ = [
     'canonicalizer',
@@ -64,4 +67,7 @@ __all__ = [
     'protocol_corpus',
     'observation_instrumentation',
     'local_crash_fuzzer',
+    'console_lab_policy',
+    'console_kit_adapter',
+    'console_artifacts',
 ]
