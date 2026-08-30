@@ -24,8 +24,15 @@ wheels/
 # Database
 *.sqlite
 
-# Reports
-state/reports/
+# Generated state
+**/state/reports/
+**/state/evidence/
+**/state/*.sqlite
+**/state/*.log
+**/state/hackerone_drafts/
+**/state/hackerone_observations/
+**/state/lab_traces/
+**/state/lab_fuzz/
 
 # Environment
 .env

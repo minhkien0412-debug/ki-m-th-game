@@ -21,10 +21,10 @@ class ScopeEngine:
     
     def is_host_in_scope(self, host: str) -> bool:
         """Check if host is within allowed scope"""
-        host = host.lower().split(':')[0]  # Remove port
+        host = host.lower().rstrip('.')
         
         for allowed in self.allowed_hosts:
-            allowed = allowed.lower()
+            allowed = allowed.lower().rstrip('.')
             
             # Exact match
             if host == allowed:
@@ -100,8 +100,12 @@ class ScopeEngine:
             return False, f"Unsupported scheme: {parsed.scheme}"
         
         # Check host
-        if not self.is_host_in_scope(parsed.netloc):
-            return False, f"Host out of scope: {parsed.netloc}"
+        if parsed.username is not None or parsed.password is not None:
+            return False, "User information is not allowed in target URLs"
+
+        hostname = (parsed.hostname or '').lower().rstrip('.')
+        if not hostname or not self.is_host_in_scope(hostname):
+            return False, f"Host out of scope: {hostname or parsed.netloc}"
         
         # Check path
         path_allowed, reason = self.is_path_in_scope(parsed.path)

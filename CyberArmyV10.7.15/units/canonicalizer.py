@@ -22,7 +22,16 @@ class Canonicalizer:
         
         # Lowercase scheme and host
         scheme = parsed.scheme.lower()
-        netloc = parsed.netloc.lower()
+        hostname = (parsed.hostname or '').lower().rstrip('.')
+        if not hostname:
+            return ''
+        try:
+            port = parsed.port
+        except ValueError:
+            return ''
+        netloc = f"[{hostname}]" if ':' in hostname else hostname
+        if port:
+            netloc = f"{netloc}:{port}"
         
         # Normalize path
         path = self._normalize_path(parsed.path)
@@ -59,13 +68,13 @@ class Canonicalizer:
     
     def is_host_allowed(self, host: str) -> bool:
         """Check if host is in allowed list (supports wildcards)"""
-        host = host.lower()
+        host = host.lower().rstrip('.')
         for allowed in self.allowed_hosts:
-            allowed = allowed.lower()
+            allowed = allowed.lower().rstrip('.')
             if allowed.startswith('*.'):
                 # Wildcard subdomain match
                 base_domain = allowed[2:]
-                if host.endswith(base_domain) or host == base_domain:
+                if host.endswith('.' + base_domain) or host == base_domain:
                     return True
             elif host == allowed:
                 return True
@@ -110,15 +119,24 @@ class Canonicalizer:
         except Exception as e:
             return False, f"Invalid URL format: {str(e)}"
         
-        if not parsed.scheme or not parsed.netloc:
+        if not parsed.scheme or not parsed.hostname:
             return False, "URL missing scheme or host"
+
+        if parsed.username is not None or parsed.password is not None:
+            return False, "User information is not allowed in target URLs"
+
+        try:
+            parsed.port
+        except ValueError:
+            return False, "Invalid URL port"
         
         if parsed.scheme not in ['http', 'https']:
             return False, f"Unsupported scheme: {parsed.scheme}"
         
         # Check host
-        if not self.is_host_allowed(parsed.netloc):
-            return False, f"Host not allowed: {parsed.netloc}"
+        hostname = parsed.hostname.lower().rstrip('.')
+        if not self.is_host_allowed(hostname):
+            return False, f"Host not allowed: {hostname}"
         
         # Check path
         path_allowed, reason = self.is_path_allowed(parsed.path)

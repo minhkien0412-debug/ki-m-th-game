@@ -47,6 +47,21 @@ class DNSIPGate:
         """Check if IP is in private/reserved range"""
         try:
             ip_obj = ipaddress.ip_address(ip)
+
+            mapped_ipv4 = getattr(ip_obj, 'ipv4_mapped', None)
+            if mapped_ipv4 is not None:
+                return self.is_private_ip(str(mapped_ipv4))
+
+            if any((
+                not ip_obj.is_global,
+                ip_obj.is_private,
+                ip_obj.is_loopback,
+                ip_obj.is_link_local,
+                ip_obj.is_multicast,
+                ip_obj.is_reserved,
+                ip_obj.is_unspecified,
+            )):
+                return True
             
             # Check against private networks
             for network in self.private_networks:
@@ -67,8 +82,7 @@ class DNSIPGate:
         Validate hostname by resolving and checking IPs
         Returns: (is_safe, error_message)
         """
-        # Parse out port if present
-        host = hostname.split(':')[0]
+        host = hostname.rstrip('.')
         
         # Resolve hostname
         ips = self.resolve_host(host)
@@ -90,11 +104,10 @@ class DNSIPGate:
         """Validate URL's hostname"""
         try:
             parsed = urlparse(url)
-            if not parsed.netloc:
+            if not parsed.hostname:
                 return False, "Invalid URL: missing host"
             
-            # Extract host (remove port if present)
-            host = parsed.netloc.split(':')[0]
+            host = parsed.hostname
             
             return self.validate_hostname(host)
         except Exception as e:
@@ -107,7 +120,9 @@ class DNSIPGate:
         """
         try:
             parsed = urlparse(url)
-            host = parsed.netloc.split(':')[0]
+            if not parsed.hostname:
+                return False, "Invalid URL: missing host", []
+            host = parsed.hostname
             
             # Resolve IPs
             ips = self.resolve_host(host)

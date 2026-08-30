@@ -26,6 +26,14 @@ from . import finding_engine
 from . import report_generator
 from . import candidate_rules_engine
 from . import validation_context
+from . import hackerone_engagement
+from . import hackerone_report
+from . import hackerone_runner
+from . import local_lab_policy
+from . import api_boundary_lab
+from . import protocol_corpus
+from . import observation_instrumentation
+from . import local_crash_fuzzer
 
 __all__ = [
     'canonicalizer',
@@ -48,4 +56,12 @@ __all__ = [
     'report_generator',
     'candidate_rules_engine',
     'validation_context',
+    'hackerone_engagement',
+    'hackerone_report',
+    'hackerone_runner',
+    'local_lab_policy',
+    'api_boundary_lab',
+    'protocol_corpus',
+    'observation_instrumentation',
+    'local_crash_fuzzer',
 ]

@@ -1,0 +1,21 @@
+{
+  "title": "Concise description of the confirmed vulnerability",
+  "asset": "https://replace-with-a-current-in-scope-asset.example/path",
+  "weakness": "CWE-000: Replace with the applicable weakness",
+  "suggested_severity": "not assessed",
+  "summary": "Explain the security boundary that fails and the minimum conditions required.",
+  "steps_to_reproduce": [
+    "Using only your own test account, perform the first low-impact step.",
+    "Perform the minimum second step needed to demonstrate the boundary failure."
+  ],
+  "observed_result": "Describe only what you personally reproduced.",
+  "expected_result": "Describe the expected security behavior.",
+  "impact": "Explain a realistic impact without exaggeration or unsupported claims.",
+  "evidence": [
+    "sanitized-request-response.txt",
+    "redacted-screenshot.png"
+  ],
+  "remediation": "Describe a practical mitigation at the affected trust boundary.",
+  "manual_validation_confirmed": true,
+  "contains_third_party_data": false
+}

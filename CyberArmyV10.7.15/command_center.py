@@ -5,6 +5,8 @@ Main entry point for the game security testing system
 """
 
 import argparse
+import asyncio
+import json
 import sys
 import yaml
 from pathlib import Path
@@ -24,6 +26,8 @@ def main():
 Examples:
   python command_center.py --config config.yaml --scan
   python command_center.py --config config.yaml --recon example.com
+  python command_center.py --config config.yaml --h1-validate-profile
+  python command_center.py --config config.yaml --h1-check-target https://example.com
   python command_center.py --version
         """
     )
@@ -39,6 +43,31 @@ Examples:
     parser.add_argument('--version', action='version', version='CyberArmy V10.7.15')
     parser.add_argument('--verbose', '-v', action='store_true',
                        help='Verbose output')
+    parser.add_argument('--h1-validate-profile', action='store_true',
+                        help='Validate the local PlayStation HackerOne profile')
+    parser.add_argument('--h1-check-target', metavar='TARGET',
+                        help='Check a URL or hostname against the verified HackerOne scope')
+    parser.add_argument('--h1-authorize', nargs=2, metavar=('ACTION', 'TARGET'),
+                        help='Check whether a low-impact action is allowed for a target')
+    parser.add_argument('--h1-draft-report', metavar='FINDING_JSON',
+                        help='Create a local HackerOne Markdown report draft')
+    parser.add_argument('--h1-passive-recon', metavar='TARGET',
+                        help='Run scope-filtered passive certificate reconnaissance')
+    parser.add_argument('--h1-observe-head', metavar='URL',
+                        help='Make one authorized HEAD request and save redacted metadata')
+    parser.add_argument('--lab-validate', action='store_true',
+                        help='Validate the isolated self-hosted local lab policy')
+    parser.add_argument('--lab-api-boundary', nargs=4,
+                        metavar=('URL', 'PAYLOAD_JSON', 'FIELD', 'TYPE'),
+                        help='Run bounded boundary cases against a loopback API')
+    parser.add_argument('--lab-analyze-protocol', metavar='CORPUS_FILE',
+                        help='Analyze an owned protocol corpus offline')
+    parser.add_argument('--lab-build-trace', metavar='SYMBOL',
+                        help='Generate an observation-only Frida symbol trace')
+    parser.add_argument('--lab-fuzz', nargs=2, metavar=('EXECUTABLE', 'SEED_FILE'),
+                        help='Run bounded mutation fuzzing against a self-hosted binary')
+    parser.add_argument('--lab-fuzz-cases', type=int, default=25,
+                        help='Number of local fuzz cases (default: 25)')
     
     args = parser.parse_args()
     
@@ -86,7 +115,158 @@ Examples:
         if args.validate:
             print("\nConfiguration is valid!")
             sys.exit(0)
-    
+
+    h1_requested = any((
+        args.h1_validate_profile,
+        args.h1_check_target,
+        args.h1_authorize,
+        args.h1_draft_report,
+        args.h1_passive_recon,
+        args.h1_observe_head,
+    ))
+    if h1_requested:
+        from units.hackerone_engagement import EngagementError, HackerOneEngagement
+
+        engagement = HackerOneEngagement(config)
+        valid, errors, warnings = engagement.validate_profile()
+        print("\n[HackerOne PlayStation Profile]")
+        print(f"Valid: {valid}")
+        for warning in warnings:
+            print(f"  WARNING: {warning}")
+        for error in errors:
+            print(f"  ERROR: {error}")
+
+        if args.h1_validate_profile:
+            sys.exit(0 if valid else 1)
+
+        if not valid:
+            print("[BLOCKED] Fix the HackerOne profile before continuing.")
+            sys.exit(1)
+
+        if args.h1_check_target:
+            asset = engagement.find_scope_asset(args.h1_check_target)
+            if asset is None:
+                print("[BLOCKED] Target is not in the manually verified scope.")
+                sys.exit(1)
+            print(f"[IN SCOPE] {asset['type']}: {asset['identifier']}")
+            sys.exit(0)
+
+        if args.h1_authorize:
+            action, target = args.h1_authorize
+            try:
+                asset = engagement.authorize(action, target)
+            except EngagementError as exc:
+                print(f"[BLOCKED] {exc}")
+                sys.exit(1)
+            print(f"[AUTHORIZED] {action} on {asset['identifier']}")
+            sys.exit(0)
+
+        if args.h1_draft_report:
+            from units.hackerone_report import HackerOneReportBuilder
+
+            try:
+                output_path = HackerOneReportBuilder(config).build_from_json_file(
+                    args.h1_draft_report
+                )
+            except (EngagementError, OSError, ValueError) as exc:
+                print(f"[BLOCKED] Report draft failed: {exc}")
+                sys.exit(1)
+            print(f"Draft saved to: {output_path}")
+            print("Review and submit it manually through HackerOne.")
+            sys.exit(0)
+
+        if args.h1_passive_recon:
+            from units.hackerone_runner import HackerOneRunner
+
+            try:
+                result = HackerOneRunner(config).passive_recon(args.h1_passive_recon)
+            except (EngagementError, OSError, RuntimeError, ValueError) as exc:
+                print(f"[BLOCKED] Passive reconnaissance failed: {exc}")
+                sys.exit(1)
+            print(f"In-scope subdomains found: {len(result['in_scope_subdomains'])}")
+            for hostname in result['in_scope_subdomains']:
+                print(f"  - {hostname}")
+            print(result['note'])
+            sys.exit(0)
+
+        if args.h1_observe_head:
+            from units.hackerone_runner import HackerOneRunner
+
+            try:
+                result = HackerOneRunner(config).observe_head(args.h1_observe_head)
+            except (EngagementError, OSError, RuntimeError, ValueError) as exc:
+                print(f"[BLOCKED] HEAD observation failed: {exc}")
+                sys.exit(1)
+            print(f"Status: {result['status_code']}")
+            print(f"Observation saved to: {result['saved_to']}")
+            print(result['note'])
+            sys.exit(0)
+
+    lab_requested = any((
+        args.lab_validate,
+        args.lab_api_boundary,
+        args.lab_analyze_protocol,
+        args.lab_build_trace,
+        args.lab_fuzz,
+    ))
+    if lab_requested:
+        from units.local_lab_policy import LocalLabError, LocalLabPolicy
+
+        lab_policy = LocalLabPolicy(config)
+        valid, errors = lab_policy.validate()
+        print("\n[Isolated Local Lab]")
+        print(f"Valid: {valid}")
+        for error in errors:
+            print(f"  ERROR: {error}")
+
+        if args.lab_validate:
+            sys.exit(0 if valid else 1)
+        if not valid:
+            print("[BLOCKED] Fix and acknowledge the local_lab profile first.")
+            sys.exit(1)
+
+        try:
+            if args.lab_api_boundary:
+                from units.api_boundary_lab import LocalApiInvariantTester
+
+                url, payload_path, field, value_type = args.lab_api_boundary
+                result = asyncio.run(LocalApiInvariantTester(config).run(
+                    url, payload_path, field, value_type
+                ))
+                print(json.dumps(result, indent=2))
+                sys.exit(0)
+
+            if args.lab_analyze_protocol:
+                from units.protocol_corpus import ProtocolCorpusAnalyzer
+
+                result = ProtocolCorpusAnalyzer(config).analyze(
+                    args.lab_analyze_protocol
+                )
+                print(json.dumps(result, indent=2))
+                sys.exit(0)
+
+            if args.lab_build_trace:
+                from units.observation_instrumentation import ObservationScriptBuilder
+
+                output_path = ObservationScriptBuilder(config).build(
+                    args.lab_build_trace
+                )
+                print(f"Observation-only trace saved to: {output_path}")
+                sys.exit(0)
+
+            if args.lab_fuzz:
+                from units.local_crash_fuzzer import LocalCrashFuzzer
+
+                executable, seed_path = args.lab_fuzz
+                result = LocalCrashFuzzer(config).run(
+                    executable, seed_path, args.lab_fuzz_cases
+                )
+                print(json.dumps(result, indent=2))
+                sys.exit(0)
+        except (LocalLabError, OSError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
+            print(f"[BLOCKED] Local lab operation failed: {exc}")
+            sys.exit(1)
+
     # Check authorization gate
     from units.program_policy import ProgramPolicy
     policy_gate = ProgramPolicy(config)
@@ -94,18 +274,28 @@ Examples:
     
     print("\n[Authorization Gate]")
     if not authorized:
-        print("WARNING: Not fully authorized - running in limited mode")
+        print("WARNING: Not authorized - active operations are blocked")
         for error in auth_details.get('errors', []):
             print(f"  - {error}")
         print("\nTo enable full functionality:")
         print("  1. Set acknowledged: true in config.yaml")
         print("  2. Set kill_switch_enabled: false when ready")
         print("  3. Ensure policy files exist and hash matches")
+
+        if args.recon or args.scan:
+            print("\n[BLOCKED] Authorization is required for reconnaissance or scanning.")
+            sys.exit(1)
     else:
         print("Authorization: GRANTED")
     
     # Run requested operation
     if args.recon:
+        from units.scope_engine import ScopeEngine
+        recon_target = args.recon.lower().rstrip('.')
+        if not ScopeEngine(config).is_host_in_scope(recon_target):
+            print(f"\n[BLOCKED] Reconnaissance target is outside the allowed host scope: {args.recon}")
+            sys.exit(1)
+
         print(f"\n[Reconnaissance] Target: {args.recon}")
         from units.recon_engine import ReconEngine
         recon = ReconEngine(config)

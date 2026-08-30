@@ -5,7 +5,7 @@ Export findings to Markdown reports
 
 from typing import Dict, Any, List, Optional
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 class ReportGenerator:
@@ -41,7 +41,7 @@ class ReportGenerator:
         report.append(f"**Mission ID:** {mission_data.get('mission_id', 'N/A')}")
         report.append(f"**Target:** {mission_data.get('target_name', 'N/A')}")
         report.append(f"**Base URL:** {mission_data.get('base_url', 'N/A')}")
-        report.append(f"**Generated:** {datetime.utcnow().isoformat()}")
+        report.append(f"**Generated:** {datetime.now(timezone.utc).isoformat()}")
         report.append("")
         
         # Executive Summary
@@ -142,7 +142,7 @@ class ReportGenerator:
                          filename: str = None) -> str:
         """Generate report and save to file"""
         if not filename:
-            timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+            timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
             filename = f"report_{timestamp}.md"
         
         content = self.generate_report(mission_data, findings)

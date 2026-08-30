@@ -12,17 +12,17 @@ class SecretRedactor:
     
     # Patterns for common secrets
     PATTERNS = {
-        'api_key': r'(?i)(api[_-]?key|apikey)\s*[:=]\s*[\'"]?([a-zA-Z0-9_\-]{20,})[\'"]?',
-        'password': r'(?i)(password|passwd|pwd)\s*[:=]\s*[\'"]?([^\s\'"]+)[\'"]?',
-        'secret': r'(?i)(secret|secret[_-]?key)\s*[:=]\s*[\'"]?([a-zA-Z0-9_\-]{16,})[\'"]?',
-        'token': r'(?i)(token|auth[_-]?token|access[_-]?token)\s*[:=]\s*[\'"]?([a-zA-Z0-9_\-\.]{20,})[\'"]?',
-        'bearer': r'(?i)bearer\s+([a-zA-Z0-9_\-\.]{20,})',
-        'basic_auth': r'(?i)basic\s+([a-zA-Z0-9+/=]{20,})',
+        'api_key': r'(?i)(?P<prefix>(?:api[_-]?key|apikey)\s*[:=]\s*[\'"]?)[a-zA-Z0-9_\-]{20,}[\'"]?',
+        'password': r'(?i)(?P<prefix>(?:password|passwd|pwd)\s*[:=]\s*[\'"]?)[^\s\'"]+[\'"]?',
+        'secret': r'(?i)(?P<prefix>(?:secret|secret[_-]?key)\s*[:=]\s*[\'"]?)[a-zA-Z0-9_\-]{16,}[\'"]?',
+        'token': r'(?i)(?P<prefix>(?:token|auth[_-]?token|access[_-]?token)\s*[:=]\s*[\'"]?)[a-zA-Z0-9_\-\.]{20,}[\'"]?',
+        'bearer': r'(?i)(?P<prefix>bearer\s+)[a-zA-Z0-9_\-\.]{20,}',
+        'basic_auth': r'(?i)(?P<prefix>basic\s+)[a-zA-Z0-9+/=]{20,}',
         'jwt': r'eyJ[a-zA-Z0-9_-]*\.eyJ[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*',
         'private_key': r'-----BEGIN (?:RSA |EC |DSA )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |DSA )?PRIVATE KEY-----',
         'github_token': r'gh[pousr]_[A-Za-z0-9_]{36,}',
         'aws_key': r'(?i)(AKIA|ABIA|ACCA|ASIA)[0-9A-Z]{16}',
-        'aws_secret': r'(?i)aws[_-]?secret[_-]?access[_-]?key\s*[:=]\s*[\'"]?([a-zA-Z0-9/+=]{40})[\'"]?',
+        'aws_secret': r'(?i)(?P<prefix>aws[_-]?secret[_-]?access[_-]?key\s*[:=]\s*[\'"]?)[a-zA-Z0-9/+=]{40}[\'"]?',
         'credit_card': r'\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|3[47][0-9]{13})\b',
         'ssn': r'\b\d{3}-\d{2}-\d{4}\b',
     }
@@ -45,8 +45,11 @@ class SecretRedactor:
         result = text
         
         for name, regex in self.compiled_patterns.items():
-            # Replace the secret value but keep the key name
-            result = regex.sub(lambda m: f"{m.group(1)}={replacement}", result)
+            def replace_secret(match):
+                prefix = match.groupdict().get('prefix')
+                return f"{prefix}{replacement}" if prefix else replacement
+
+            result = regex.sub(replace_secret, result)
         
         return result
     

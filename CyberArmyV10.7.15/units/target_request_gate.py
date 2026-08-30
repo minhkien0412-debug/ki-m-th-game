@@ -4,7 +4,11 @@ Safe request gateway with multiple security checks
 """
 
 import requests
+import threading
+import time
+from collections import deque
 from typing import Dict, Any, Optional, Tuple
+from urllib.parse import urljoin, urlparse
 from .dns_ip_gate import DNSIPGate
 from .canonicalizer import Canonicalizer
 from .secret_redactor import SecretRedactor
@@ -16,6 +20,12 @@ class TargetRequestGate:
     def __init__(self, config: Dict[str, Any]):
         self.config = config
         self.rate_limit = config.get('rate_limit', {})
+        self.requests_per_second = self._positive_limit('requests_per_second')
+        self.requests_per_minute = self._positive_limit('requests_per_minute')
+        concurrent = self._positive_limit('concurrent_connections') or 1
+        self._concurrency_gate = threading.BoundedSemaphore(concurrent)
+        self._rate_lock = threading.Lock()
+        self._request_times = deque()
         target_config = config.get('target', {})
         
         # Initialize safety components
@@ -29,9 +39,68 @@ class TargetRequestGate:
         
         # Session for connection pooling
         self.session = requests.Session()
+        self.session.trust_env = False
         self.session.headers.update({
             'User-Agent': 'CyberArmy-Security-Scanner/10.7.15 (Authorized Testing)'
         })
+
+    def _positive_limit(self, name: str) -> Optional[int]:
+        """Return a positive integer rate limit, or None when disabled."""
+        value = self.rate_limit.get(name)
+        if value is None:
+            return None
+        try:
+            value = int(value)
+        except (TypeError, ValueError):
+            return None
+        return value if value > 0 else None
+
+    def _wait_for_rate_limit(self):
+        """Enforce rolling per-second and per-minute request limits."""
+        while True:
+            with self._rate_lock:
+                now = time.monotonic()
+                while self._request_times and now - self._request_times[0] >= 60:
+                    self._request_times.popleft()
+
+                waits = []
+                if self.requests_per_minute and len(self._request_times) >= self.requests_per_minute:
+                    waits.append(60 - (now - self._request_times[0]))
+
+                if self.requests_per_second:
+                    recent = [stamp for stamp in self._request_times if now - stamp < 1]
+                    if len(recent) >= self.requests_per_second:
+                        waits.append(1 - (now - recent[0]))
+
+                wait_for = max(waits, default=0)
+                if wait_for <= 0:
+                    self._request_times.append(now)
+                    return
+
+            time.sleep(wait_for)
+
+    def _send_once(self, method: str, url: str, headers: Dict[str, str],
+                   params: Optional[Dict[str, Any]], data: Optional[Any],
+                   timeout: int) -> requests.Response:
+        """Send one validated request without automatically following redirects."""
+        self._wait_for_rate_limit()
+        with self._concurrency_gate:
+            return self.session.request(
+                method=method,
+                url=url,
+                headers=headers,
+                params=params,
+                data=data,
+                timeout=timeout,
+                allow_redirects=False,
+            )
+
+    @staticmethod
+    def _origin(url: str) -> Tuple[str, Optional[str], Optional[int]]:
+        """Return a normalized origin tuple for credential forwarding checks."""
+        parsed = urlparse(url)
+        default_port = 443 if parsed.scheme.lower() == 'https' else 80
+        return parsed.scheme.lower(), parsed.hostname, parsed.port or default_port
     
     def validate_before_request(self, url: str) -> Tuple[bool, Optional[str]]:
         """Validate URL before making request"""
@@ -64,21 +133,55 @@ class TargetRequestGate:
         # Normalize URL
         url = self.canonicalizer.normalize_url(url)
         
-        # Prepare headers (redact sensitive info)
-        safe_headers = headers or {}
-        safe_headers = self.redactor.redact_headers(safe_headers)
+        # Credentials must reach the target. Redaction is only for logs/evidence.
+        request_headers = dict(headers or {})
         
         try:
-            response = self.session.request(
-                method=method,
-                url=url,
-                headers=safe_headers,
-                params=params,
-                data=data,
-                timeout=timeout,
-                allow_redirects=allow_redirects
-            )
-            return response
+            current_url = url
+            current_method = method.upper()
+            current_params = params
+            current_data = data
+
+            for _ in range(11):
+                response = self._send_once(
+                    current_method, current_url, request_headers,
+                    current_params, current_data, timeout,
+                )
+
+                if not allow_redirects or not response.is_redirect:
+                    return response
+
+                location = response.headers.get('Location')
+                if not location:
+                    return response
+
+                next_url = urljoin(current_url, location)
+                is_valid, error = self.validate_before_request(next_url)
+                if not is_valid:
+                    response.close()
+                    print(f"[GATE BLOCKED] Unsafe redirect: {error}")
+                    return None
+
+                if self._origin(current_url) != self._origin(next_url):
+                    sensitive_headers = {'authorization', 'cookie', 'proxy-authorization'}
+                    request_headers = {
+                        key: value for key, value in request_headers.items()
+                        if key.lower() not in sensitive_headers
+                    }
+
+                if response.status_code == 303 or (
+                    response.status_code in (301, 302) and current_method not in ('GET', 'HEAD')
+                ):
+                    current_method = 'GET'
+                    current_data = None
+
+                response.close()
+                current_url = self.canonicalizer.normalize_url(next_url)
+                current_params = None
+
+            response.close()
+            print("[GATE BLOCKED] Too many redirects")
+            return None
         except requests.exceptions.RequestException as e:
             print(f"[REQUEST ERROR] {str(e)}")
             return None

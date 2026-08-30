@@ -7,7 +7,7 @@ import json
 import time
 from typing import Dict, Any, Optional, List
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 class EvidenceStore:
@@ -27,7 +27,7 @@ class EvidenceStore:
                       metadata: Optional[Dict[str, Any]] = None) -> str:
         """Record HTTP request/response as evidence"""
         evidence = {
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'mission_id': mission_id,
             'type': 'http_traffic',
             'request': request_data,
@@ -45,7 +45,7 @@ class EvidenceStore:
                                evidence_type: str, data: Dict[str, Any]) -> str:
         """Record specific evidence for a finding"""
         evidence = {
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'mission_id': mission_id,
             'finding_id': finding_id,
             'type': evidence_type,
@@ -117,7 +117,7 @@ class EvidenceStore:
         
         export_data = {
             'mission_id': mission_id,
-            'exported_at': datetime.utcnow().isoformat(),
+            'exported_at': datetime.now(timezone.utc).isoformat(),
             'traffic_count': len(traffic),
             'finding_evidence_count': len(finding_evidence),
             'traffic': traffic,

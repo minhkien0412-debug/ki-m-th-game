@@ -71,3 +71,45 @@ logging:
   level: "INFO"
   file: "state/mission.log"
   console: true
+
+# HackerOne PlayStation mode (fail-closed)
+# Copy assets only from the current official HackerOne scope page. Do not use
+# third-party scope mirrors as authorization, and re-check before every session.
+hackerone:
+  enabled: false
+  program_handle: "playstation"
+  policy_url: "https://hackerone.com/playstation/policy_scopes"
+  researcher_handle: ""
+  acknowledged_current_policy: false
+  human_in_the_loop: true
+  scope_reviewed_at: ""
+  scope_max_age_days: 1
+  report_output_dir: "state/hackerone_drafts"
+  observation_output_dir: "state/hackerone_observations"
+  max_passive_results: 50
+  scope_assets: []
+  # Example after manual verification:
+  # Add the apex and wildcard as separate entries only when both appear in scope.
+  # - type: "domain"
+  #   identifier: "*.verified-in-scope.example"
+  #   eligible_for_submission: true
+  #   allowed_actions: ["passive_recon", "http_get", "http_head", "manual_validation", "reporting"]
+
+# Isolated self-hosted research lab. This profile never authorizes testing a
+# public service, third-party console, production account, or privileged kernel.
+local_lab:
+  enabled: false
+  authorized_self_hosted_only: false
+  human_in_the_loop: true
+  network_isolated: false
+  authorization_reference: ""
+  workspace_root: "."
+  max_api_cases: 16
+  max_concurrency: 2
+  max_fuzz_cases: 50
+  max_input_bytes: 1048576
+  max_response_bytes: 262144
+  process_timeout_seconds: 5
+  allowed_executable_extensions: [".exe"]
+  trace_output_dir: "state/lab_traces"
+  fuzz_output_dir: "state/lab_fuzz"
