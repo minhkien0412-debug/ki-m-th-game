@@ -1,0 +1,4 @@
+frame_time_ms,memory_mb,cpu_percent,gpu_percent,network_kbps
+15.8,2048,42.5,67.1,320
+16.2,2052,44.0,69.3,335
+18.7,2056,48.2,75.6,410

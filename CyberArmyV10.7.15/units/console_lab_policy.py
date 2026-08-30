@@ -15,7 +15,16 @@ class ConsoleLabPolicy:
     KIT_PATTERN = re.compile(r'^[A-Za-z0-9_.:-]{1,100}$')
     ALLOWED_PLATFORMS = {'ps4', 'ps5'}
     ALLOWED_PLACEHOLDERS = {
-        '{artifact}', '{kit_id}', '{crash}', '{symbols}', '{output_dir}'
+        '{artifact}', '{kit_id}', '{crash}', '{symbols}', '{output_dir}',
+        '{session_dir}'
+    }
+    CAPABILITY_COMMANDS = {
+        'run': ('run_command',),
+        'symbolicate': ('symbolicate_command',),
+        'workflow': (
+            'preflight_command', 'deploy_command', 'launch_command',
+            'collect_command', 'stop_command',
+        ),
     }
 
     def __init__(self, config: Dict[str, Any]):
@@ -54,14 +63,6 @@ class ConsoleLabPolicy:
         if not self.workspace_root.is_dir():
             errors.append('workspace_root must be an existing directory')
 
-        for command_name in ('run_command', 'symbolicate_command'):
-            try:
-                self.validate_command_template(
-                    self.config.get(command_name, []), command_name
-                )
-            except LocalLabError as exc:
-                errors.append(str(exc))
-
         environment_names = self.config.get('sdk_environment_allowlist', [])
         if not isinstance(environment_names, list) or any(
             not isinstance(name, str)
@@ -75,6 +76,7 @@ class ConsoleLabPolicy:
             ('max_artifact_bytes', 1073741824, 107374182400),
             ('max_crash_bytes', 268435456, 4294967296),
             ('max_corpus_files', 1000, 10000),
+            ('max_telemetry_rows', 100000, 1000000),
         ):
             try:
                 value = int(self.config.get(key, default))
@@ -84,10 +86,45 @@ class ConsoleLabPolicy:
             if value < 1 or value > maximum:
                 errors.append(f'{key} must be between 1 and {maximum}')
 
+        try:
+            frame_budget = float(self.config.get('frame_budget_ms', 16.667))
+            if frame_budget <= 0 or frame_budget > 1000:
+                errors.append('frame_budget_ms must be greater than 0 and at most 1000')
+        except (TypeError, ValueError):
+            errors.append('frame_budget_ms must be a number')
+
         return not errors, errors
+
+    def validate_capability(
+        self, capability: str, require_execution: bool = False
+    ) -> Tuple[bool, List[str]]:
+        """Validate only the tools needed for one requested operation."""
+        valid, errors = self.validate(require_execution=require_execution)
+        if capability not in {
+            'base', 'run', 'workflow', 'symbolicate', 'import_crash',
+            'corpus', 'telemetry',
+        }:
+            errors.append(f'Unknown console capability: {capability}')
+        for command_name in self.CAPABILITY_COMMANDS.get(capability, ()):
+            try:
+                self.validate_command_template(
+                    self.config.get(command_name, []), command_name
+                )
+            except LocalLabError as exc:
+                errors.append(str(exc))
+        return valid and not errors, errors
 
     def require_valid(self, require_execution: bool = False) -> None:
         valid, errors = self.validate(require_execution=require_execution)
+        if not valid:
+            raise LocalLabError('; '.join(errors))
+
+    def require_capability(
+        self, capability: str, require_execution: bool = False
+    ) -> None:
+        valid, errors = self.validate_capability(
+            capability, require_execution=require_execution
+        )
         if not valid:
             raise LocalLabError('; '.join(errors))
 

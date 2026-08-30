@@ -133,12 +133,20 @@ console_lab:
   max_artifact_bytes: 1073741824
   max_crash_bytes: 268435456
   max_corpus_files: 1000
+  max_telemetry_rows: 100000
+  frame_budget_ms: 16.667
   allowed_artifact_extensions: [".pkg", ".self", ".elf"]
   allowed_crash_extensions: [".dmp", ".core", ".log", ".txt", ".json"]
   artifact_output_dir: "state/console_artifacts"
+  session_output_dir: "state/console_sessions"
   sdk_environment_allowlist: []
   # YAML argv lists; the first item must be the absolute path to an official
   # SDK executable. Supported placeholders are {artifact}, {kit_id}, {crash},
   # {symbols}, and {output_dir}. No shell is used.
   run_command: []
   symbolicate_command: []
+  preflight_command: []
+  deploy_command: []
+  launch_command: []
+  collect_command: []
+  stop_command: []

@@ -70,6 +70,10 @@ Examples:
                         help='Number of local fuzz cases (default: 25)')
     parser.add_argument('--console-validate', action='store_true',
                         help='Validate the authorized dev/test-kit integration profile')
+    parser.add_argument('--console-validate-capability',
+                        choices=('run', 'workflow', 'symbolicate', 'import_crash',
+                                 'corpus', 'telemetry'),
+                        help='Validate only one console capability and its required tools')
     parser.add_argument('--console-plan', metavar='ARTIFACT',
                         help='Print the official-SDK argv for an owned console build')
     parser.add_argument('--console-run', metavar='ARTIFACT',
@@ -81,6 +85,12 @@ Examples:
                         help='Run the configured offline symbolication tool')
     parser.add_argument('--console-index-corpus', metavar='CORPUS_DIRECTORY',
                         help='Create a deterministic manifest for an owned corpus')
+    parser.add_argument('--console-workflow-plan', metavar='ARTIFACT',
+                        help='Print preflight/deploy/launch/collect/stop SDK argv')
+    parser.add_argument('--console-workflow', metavar='ARTIFACT',
+                        help='Run the guarded multi-step dev/test-kit workflow')
+    parser.add_argument('--console-analyze-telemetry', metavar='TELEMETRY_CSV',
+                        help='Analyze an exported owned telemetry CSV offline')
     
     args = parser.parse_args()
     
@@ -282,25 +292,47 @@ Examples:
 
     console_requested = any((
         args.console_validate,
+        args.console_validate_capability,
         args.console_plan,
         args.console_run,
         args.console_import_crash,
         args.console_symbolicate,
         args.console_index_corpus,
+        args.console_workflow_plan,
+        args.console_workflow,
+        args.console_analyze_telemetry,
     ))
     if console_requested:
         from units.console_lab_policy import ConsoleLabPolicy
         from units.local_lab_policy import LocalLabError
 
         console_policy = ConsoleLabPolicy(config)
-        require_execution = bool(args.console_run)
-        valid, errors = console_policy.validate(require_execution=require_execution)
+        if args.console_validate_capability:
+            capability = args.console_validate_capability
+        elif args.console_plan or args.console_run:
+            capability = 'run'
+        elif args.console_workflow_plan or args.console_workflow:
+            capability = 'workflow'
+        elif args.console_symbolicate:
+            capability = 'symbolicate'
+        elif args.console_import_crash:
+            capability = 'import_crash'
+        elif args.console_index_corpus:
+            capability = 'corpus'
+        elif args.console_analyze_telemetry:
+            capability = 'telemetry'
+        else:
+            capability = 'base'
+        require_execution = bool(args.console_run or args.console_workflow)
+        valid, errors = console_policy.validate_capability(
+            capability, require_execution=require_execution
+        )
         print("\n[Authorized PlayStation Dev/Test-Kit Lab]")
         print(f"Valid: {valid}")
         for error in errors:
             print(f"  ERROR: {error}")
 
-        if args.console_validate:
+        if args.console_validate or args.console_validate_capability:
             sys.exit(0 if valid else 1)
         if not valid:
             print('[BLOCKED] Complete the console_lab profile before continuing.')
@@ -342,6 +374,27 @@ Examples:
 
                 result = ConsoleCorpusIndexer(config).index(
                     args.console_index_corpus
+                )
+                print(json.dumps(result, indent=2))
+                sys.exit(0)
+
+            if args.console_workflow_plan or args.console_workflow:
+                from units.console_kit_adapter import ConsoleKitAdapter
+
+                adapter = ConsoleKitAdapter(config)
+                result = (
+                    adapter.run_workflow(args.console_workflow)
+                    if args.console_workflow
+                    else adapter.plan_workflow(args.console_workflow_plan)
+                )
+                print(json.dumps(result, indent=2))
+                sys.exit(0 if result.get('successful', True) else 1)
+
+            if args.console_analyze_telemetry:
+                from units.console_artifacts import ConsoleTelemetryAnalyzer
+
+                result = ConsoleTelemetryAnalyzer(config).analyze(
+                    args.console_analyze_telemetry
                 )
                 print(json.dumps(result, indent=2))
                 sys.exit(0)

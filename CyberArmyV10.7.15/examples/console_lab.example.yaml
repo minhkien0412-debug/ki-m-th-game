@@ -16,9 +16,12 @@ console_lab:
   max_artifact_bytes: 1073741824
   max_crash_bytes: 268435456
   max_corpus_files: 1000
+  max_telemetry_rows: 100000
+  frame_budget_ms: 16.667
   allowed_artifact_extensions: [".pkg", ".self", ".elf"]
   allowed_crash_extensions: [".dmp", ".core", ".log", ".txt", ".json"]
   artifact_output_dir: "state/console_artifacts"
+  session_output_dir: "state/console_sessions"
   # Add only non-secret environment variable names required by the official
   # tool. Their values are inherited at runtime and are never written here.
   sdk_environment_allowlist: []
@@ -39,3 +42,10 @@ console_lab:
     - "{symbols}"
     - "--output"
     - "{output_dir}"
+
+  # Replace these illustrative flags with the argv documented by your SDK.
+  preflight_command: ["C:/absolute/path/to/official-sdk-tool.exe", "--kit", "{kit_id}", "--status"]
+  deploy_command: ["C:/absolute/path/to/official-sdk-tool.exe", "--kit", "{kit_id}", "--deploy", "{artifact}"]
+  launch_command: ["C:/absolute/path/to/official-sdk-tool.exe", "--kit", "{kit_id}", "--launch", "{artifact}"]
+  collect_command: ["C:/absolute/path/to/official-sdk-tool.exe", "--kit", "{kit_id}", "--collect", "{session_dir}"]
+  stop_command: ["C:/absolute/path/to/official-sdk-tool.exe", "--kit", "{kit_id}", "--stop"]

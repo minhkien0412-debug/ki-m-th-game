@@ -34,6 +34,7 @@ wheels/
 **/state/lab_traces/
 **/state/lab_fuzz/
 **/state/console_artifacts/
+**/state/console_sessions/
 
 # Environment
 .env

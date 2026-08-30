@@ -13,6 +13,13 @@ python -m venv .venv
 python -m pip install -r requirements.txt
 ```
 
+For a reproducible development/test environment on Python 3.12, install the
+tested lock set instead:
+
+```bash
+python -m pip install -r requirements-dev.txt
+```
+
 Run commands from that directory:
 
 ```bash
@@ -128,6 +135,12 @@ This bridge adds the repository-side pieces that were previously missing:
 - crash/log import with SHA-256 and a JSON chain-of-custody manifest;
 - an offline symbolication hook using the official tool configured locally;
 - deterministic indexing of game-input corpora for repeatable testing.
+- capability-specific validation, so offline corpus/crash work does not require
+  an installed runner or symbolicator;
+- a guarded preflight/deploy/launch/collect/stop workflow that always attempts
+  cleanup after launch and writes a redacted session audit;
+- normalized crash fingerprints and a persistent duplicate-occurrence index;
+- offline CSV telemetry summaries for frame time, memory, CPU/GPU and network.
 
 Start from `examples/console_lab.example.yaml`. Keep
 `allow_device_execution: false` until the dry-run command is reviewed. The
@@ -137,10 +150,13 @@ placeholders are `{artifact}`, `{kit_id}`, `{crash}`, `{symbols}`, and
 
 ```bash
 python command_center.py --console-validate
+python command_center.py --console-validate-capability workflow
 python command_center.py --console-plan builds/owned-game.pkg
+python command_center.py --console-workflow-plan builds/owned-game.pkg
 python command_center.py --console-index-corpus samples/owned-corpus
 python command_center.py --console-import-crash inbox/exported-crash.dmp
 python command_center.py --console-symbolicate state/console_artifacts/imports/ID/exported-crash.dmp symbols/owned-symbol-map.log
+python command_center.py --console-analyze-telemetry telemetry/owned-session.csv
 ```
 
 After validating the generated argv and the physical/network lab boundary, set
@@ -148,7 +164,14 @@ After validating the generated argv and the physical/network lab boundary, set
 
 ```bash
 python command_center.py --console-run builds/owned-game.pkg
+python command_center.py --console-workflow builds/owned-game.pkg
 ```
+
+Telemetry CSV requires `frame_time_ms`; optional numeric columns are
+`memory_mb`, `cpu_percent`, `gpu_percent`, and `network_kbps`. Rows with invalid
+or negative values are counted and ignored. The configured frame budget is used
+to report over-budget frames, while min/average/p95/max are computed offline.
+Copy `examples/telemetry.example.csv` when preparing the first export.
 
 The bridge does not turn a retail PS4/PS5 into a dev kit, install an SDK, obtain
 partner approval, or bypass platform protections. SDK-specific command names
