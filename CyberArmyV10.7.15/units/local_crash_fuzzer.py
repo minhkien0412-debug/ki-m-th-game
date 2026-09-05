@@ -56,6 +56,55 @@ class LocalCrashFuzzer:
         unsigned = return_code & 0xFFFFFFFF
         return return_code < 0 or unsigned in cls.WINDOWS_CRASH_CODES
 
+    @staticmethod
+    def crash_signature(return_code, stderr_tail: str = '') -> str:
+        """A stable fingerprint used to group duplicate crashes.
+
+        Combines the (normalized) exit code with the first non-empty stderr
+        line, so many mutated inputs that trip the same bug collapse to one
+        unique crash instead of hundreds of near-identical reports.
+        """
+        if return_code is None:
+            code = 'timeout'
+        else:
+            code = format(return_code & 0xFFFFFFFF, '#010x')
+        line = ''
+        for candidate in (stderr_tail or '').splitlines():
+            candidate = candidate.strip()
+            if candidate:
+                line = candidate
+                break
+        digest = hashlib.sha1(line.encode('utf-8', 'replace')).hexdigest()[:10]
+        return f'{code}|{digest}'
+
+    @staticmethod
+    def minimize(data: bytes, still_crashes, max_rounds: int = 200) -> bytes:
+        """Delta-debug a crashing input to a smaller one that still crashes.
+
+        ``still_crashes`` is a callable ``bytes -> bool``. This only *removes*
+        bytes; it never synthesizes new content, builds a payload, or constructs
+        an exploit — it just shrinks the reproducer for triage.
+        """
+        if not data or not still_crashes(data):
+            return data
+        current = bytes(data)
+        chunk = max(1, len(current) // 2)
+        rounds = 0
+        while chunk >= 1 and rounds < max_rounds:
+            index = 0
+            removed_any = False
+            while index < len(current) and rounds < max_rounds:
+                candidate = current[:index] + current[index + chunk:]
+                rounds += 1
+                if candidate and still_crashes(candidate):
+                    current = candidate
+                    removed_any = True
+                else:
+                    index += chunk
+            if not removed_any:
+                chunk //= 2
+        return current
+
     def run(self, executable: str, seed_path: str, cases: int) -> Dict[str, Any]:
         self.policy.require_valid()
         binary = self.policy.require_workspace_file(executable)
@@ -87,8 +136,29 @@ class LocalCrashFuzzer:
             if key.upper() in {'PATH', 'SYSTEMROOT', 'WINDIR', 'TEMP', 'TMP'}
         }
 
+        minimize_enabled = bool(self.policy.config.get('minimize_crashes', True))
+        unique_crashes: Dict[str, Dict[str, Any]] = {}
+
         with tempfile.TemporaryDirectory(dir=self.output_dir) as temp_dir:
             temp_root = Path(temp_dir)
+
+            def still_crashes(candidate: bytes) -> bool:
+                probe = temp_root / 'minimize_probe.bin'
+                probe.write_bytes(candidate)
+                try:
+                    completed = subprocess.run(
+                        [str(binary), str(probe)],
+                        cwd=str(binary.parent),
+                        capture_output=True,
+                        timeout=timeout,
+                        check=False,
+                        shell=False,
+                        env=safe_env,
+                    )
+                except subprocess.TimeoutExpired:
+                    return False
+                return self.is_crash_return_code(completed.returncode)
+
             for index in range(cases):
                 mutated = self.mutate(seed_data, index)
                 input_path = temp_root / f'case_{index:05d}.bin'
@@ -131,6 +201,30 @@ class LocalCrashFuzzer:
                     saved = crash_dir / f'crash_{index:05d}_{result["sha256"][:12]}.bin'
                     shutil.copy2(input_path, saved)
                     result['saved_input'] = str(saved)
+
+                    signature = self.crash_signature(
+                        result['return_code'], result.get('stderr_tail', '')
+                    )
+                    result['crash_signature'] = signature
+                    is_new = signature not in unique_crashes
+                    result['duplicate'] = not is_new
+                    if is_new:
+                        record = {'signature': signature, 'first_case': index,
+                                  'saved_input': str(saved), 'occurrences': 1}
+                        # Shrink the first reproducer of each distinct crash.
+                        if minimize_enabled:
+                            minimized = self.minimize(mutated, still_crashes)
+                            if len(minimized) < len(mutated):
+                                min_path = (crash_dir /
+                                            f'crash_{index:05d}_{signature.split("|")[0]}_min.bin')
+                                min_path.write_bytes(minimized)
+                                result['minimized_input'] = str(min_path)
+                                record['minimized_input'] = str(min_path)
+                            result['minimized_bytes'] = len(minimized)
+                            record['minimized_bytes'] = len(minimized)
+                        unique_crashes[signature] = record
+                    else:
+                        unique_crashes[signature]['occurrences'] += 1
                 results.append(result)
 
         return {
@@ -138,9 +232,12 @@ class LocalCrashFuzzer:
             'seed': str(seed),
             'cases': cases,
             'crashes': sum(1 for result in results if result['crashed']),
+            'unique_crashes': len(unique_crashes),
+            'unique_crash_details': list(unique_crashes.values()),
             'timeouts': sum(1 for result in results if result['timed_out']),
             'results': results,
             'authorization_reference': self.policy.authorization_reference,
             'exploit_generated': False,
-            'note': 'Crash triage only; no shellcode, ROP chain, or privilege escalation.',
+            'note': 'Crash triage and minimization only; no shellcode, ROP chain, '
+                    'or privilege escalation.',
         }

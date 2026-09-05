@@ -33,6 +33,7 @@ __all__ = [
     'code_analyst',
     'safe_validator',
     'finding_engine',
+    'integrity_analyzer',
     'report_generator',
     'candidate_rules_engine',
     'validation_context',

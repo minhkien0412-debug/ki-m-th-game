@@ -91,7 +91,10 @@ Examples:
                         help='Run the guarded multi-step dev/test-kit workflow')
     parser.add_argument('--console-analyze-telemetry', metavar='TELEMETRY_CSV',
                         help='Analyze an exported owned telemetry CSV offline')
-    
+    parser.add_argument('--analyze-integrity', metavar='TELEMETRY_CSV',
+                        help='Offline anti-cheat/integrity anomaly analysis of an '
+                             'owned telemetry CSV (no network)')
+
     args = parser.parse_args()
     
     # Load configuration
@@ -138,6 +141,17 @@ Examples:
         if args.validate:
             print("\nConfiguration is valid!")
             sys.exit(0)
+
+    if args.analyze_integrity:
+        from units.integrity_analyzer import IntegrityAnalyzer, IntegrityAnalyzerError
+
+        try:
+            result = IntegrityAnalyzer(config).analyze(args.analyze_integrity)
+        except (IntegrityAnalyzerError, OSError) as exc:
+            print(f"[BLOCKED] Integrity analysis failed: {exc}")
+            sys.exit(1)
+        print(json.dumps(result, indent=2))
+        sys.exit(0 if result['finding_count'] == 0 else 2)
 
     h1_requested = any((
         args.h1_validate_profile,
@@ -454,10 +468,12 @@ Examples:
         from units.finding_engine import FindingEngine
         from units.safe_validator import SafeValidator
         from units.validation_context import ValidationContext
+        from units.evidence_store import EvidenceStore
         from units.validators.reflection import ReflectionValidator
         from units.validators.authorization_boundary import (
             AuthorizationBoundaryValidator,
         )
+        from units.validators.security_headers import SecurityHeadersValidator
 
         mission_store = MissionStore()
         finding_engine = FindingEngine(config)
@@ -475,16 +491,30 @@ Examples:
         registry.register_validator(
             'authorization_boundary', AuthorizationBoundaryValidator(config)
         )
+        registry.register_validator(
+            'security_headers', SecurityHeadersValidator(config)
+        )
+
         context = ValidationContext(mission_id, config)
+        # Feed any previously collected traffic to the passive validators so they
+        # analyze real evidence. With no stored traffic there is simply nothing
+        # to find — the scan never invents a result.
+        evidence_dir = config.get('evidence', {}).get('evidence_dir', 'state/evidence')
+        collected = EvidenceStore(evidence_dir).get_traffic(mission_id)
+        for entry in collected:
+            request = entry.get('request', {}) or {}
+            response = entry.get('response', {}) or {}
+            context.add_response({
+                'url': request.get('url') or entry.get('url', ''),
+                'method': request.get('method', 'GET'),
+                'status': response.get('status') or response.get('status_code'),
+                'request_headers': request.get('headers', {}),
+                'response_headers': response.get('headers', {}),
+                'body': response.get('body', ''),
+            })
+
         for result in registry.run_all_validators(context):
-            for finding in result.get('findings', []):
-                finding_engine.create_finding(
-                    finding_type=finding.get('type', 'info'),
-                    title=finding.get('title', 'Untitled finding'),
-                    severity=finding.get('severity', 'info'),
-                    url=finding.get('url', ''),
-                    description=finding.get('description', ''),
-                )
+            finding_engine.add_findings(result.get('findings', []))
 
         summary = finding_engine.get_summary()
         print(f"\nSafe validators run: {len(registry.get_all_validators())}")
