@@ -62,6 +62,8 @@ class ConsoleKitAdapter:
                 'return_code': None,
                 'successful': False,
                 'timed_out': True,
+                'stdout_tail': '',
+                'stderr_tail': f'[timed out after {self.policy.config.get("process_timeout_seconds", 30)}s]',
                 'shell': False,
             }
         return {

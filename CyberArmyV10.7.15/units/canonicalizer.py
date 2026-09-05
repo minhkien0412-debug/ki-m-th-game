@@ -86,28 +86,46 @@ class Canonicalizer:
         Returns: (is_allowed, reason_if_blocked)
         """
         path = self._normalize_path(path)
-        
+
         # Check blocked paths first
         for blocked in self.blocked_paths:
-            if self._match_path_pattern(path, blocked):
+            if self._matches_blocked_pattern(path, blocked):
                 return False, f"Path matches blocked pattern: {blocked}"
-        
+
         # Check allowed paths
         if not self.allowed_paths:
             return True, None
-        
+
         for allowed in self.allowed_paths:
             if self._match_path_pattern(path, allowed):
                 return True, None
-        
+
         return False, "Path not in allowed list"
-    
+
     def _match_path_pattern(self, path: str, pattern: str) -> bool:
-        """Match path against pattern (supports * wildcard)"""
+        """Match path against an allow pattern (supports trailing * wildcard)."""
         if pattern.endswith('*'):
             prefix = pattern[:-1]
             return path.startswith(prefix)
         return path == pattern
+
+    @staticmethod
+    def _matches_blocked_pattern(path: str, pattern: str) -> bool:
+        """Match a path against a block pattern conservatively.
+
+        A blocklist must not be trivially side-stepped, so matching is
+        case-insensitive and a directory pattern such as ``/admin/*`` also
+        blocks the bare ``/admin`` (and ``/admin/``), while still leaving
+        unrelated siblings like ``/administrator`` allowed.
+        """
+        p = path.lower()
+        pat = pattern.lower()
+        if pat.endswith('/*'):
+            base = pat[:-2]
+            return p == base or p.startswith(base + '/')
+        if pat.endswith('*'):
+            return p.startswith(pat[:-1])
+        return p == pat
     
     def validate_url(self, url: str) -> Tuple[bool, Optional[str]]:
         """
