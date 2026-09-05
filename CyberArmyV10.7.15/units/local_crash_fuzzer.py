@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from .local_lab_policy import LocalLabError, LocalLabPolicy
+from .sanitizer import sanitizer_signature
 
 
 class LocalCrashFuzzer:
@@ -60,10 +61,14 @@ class LocalCrashFuzzer:
     def crash_signature(return_code, stderr_tail: str = '') -> str:
         """A stable fingerprint used to group duplicate crashes.
 
-        Combines the (normalized) exit code with the first non-empty stderr
-        line, so many mutated inputs that trip the same bug collapse to one
-        unique crash instead of hundreds of near-identical reports.
+        When the target is a sanitizer-instrumented build, the ASan/UBSan bug
+        class and faulting frame give the most precise grouping. Otherwise fall
+        back to the (normalized) exit code plus the first stderr line, so many
+        mutated inputs that trip the same bug collapse to one unique crash.
         """
+        san = sanitizer_signature(stderr_tail or '')
+        if san:
+            return f'san|{san}'
         if return_code is None:
             code = 'timeout'
         else:
