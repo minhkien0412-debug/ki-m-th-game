@@ -79,6 +79,38 @@ python command_center.py --config config.yaml --analyze-integrity telemetry/owne
 It is a triage aid, not a full anti-cheat runtime: it surfaces rows worth a
 human's attention with the evidence for why.
 
+### Declarative anti-cheat rules
+
+Each game has its own physics and economy, so encode *your* game's rules under
+`integrity.rules` and the analyzer evaluates them offline (rules are data, never
+code — nothing is `eval`'d). Supported `type` values: `max`, `min`, `max_delta`
+(jump between consecutive rows), `max_rate` (change per unit of a `per` column),
+`monotonic` (`increasing`/`nondecreasing`/`decreasing`/`nonincreasing`), and
+`allowed_set`.
+
+```yaml
+integrity:
+  rules:
+    - {id: speed-cap,    type: max,       column: speed_mps, value: 12}
+    - {id: no-teleport,  type: max_delta, column: pos_x,     value: 50}
+    - {id: time-forward, type: monotonic, column: t_ms,      direction: nondecreasing}
+    - {id: score-rate,   type: max_rate,  column: score, per: t_ms, value: 5}
+```
+
+## Coverage-guided fuzzing (Python harness)
+
+In addition to the black-box native fuzzer (`--lab-fuzz`), the lab can fuzz a
+Python harness with real edge-coverage feedback, keeping inputs that reach new
+code and shrinking crash reproducers. The harness is a callable in the workspace
+taking one `bytes` argument. (For an opaque prebuilt binary, run a
+sanitizer/coverage-instrumented build under `--lab-fuzz`; its crash triage now
+parses ASan/UBSan reports.)
+
+```bash
+python command_center.py --config config.yaml \
+  --lab-cov-fuzz mypackage.parser_harness:parse --lab-cov-seed samples/seed.bin --lab-fuzz-cases 100
+```
+
 ## PlayStation HackerOne safe mode
 
 This mode is intentionally fail-closed. It does not contain a built-in list of

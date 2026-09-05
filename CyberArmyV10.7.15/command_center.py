@@ -68,6 +68,11 @@ Examples:
                         help='Run bounded mutation fuzzing against a self-hosted binary')
     parser.add_argument('--lab-fuzz-cases', type=int, default=25,
                         help='Number of local fuzz cases (default: 25)')
+    parser.add_argument('--lab-cov-fuzz', metavar='MODULE:FUNCTION',
+                        help='Coverage-guided fuzz a Python harness in the workspace '
+                             '(callable taking one bytes argument)')
+    parser.add_argument('--lab-cov-seed', metavar='SEED_FILE',
+                        help='Optional seed input file for --lab-cov-fuzz')
     parser.add_argument('--console-validate', action='store_true',
                         help='Validate the authorized dev/test-kit integration profile')
     parser.add_argument('--console-validate-capability',
@@ -245,6 +250,7 @@ Examples:
         args.lab_analyze_protocol,
         args.lab_build_trace,
         args.lab_fuzz,
+        args.lab_cov_fuzz,
     ))
     if lab_requested:
         from units.local_lab_policy import LocalLabError, LocalLabPolicy
@@ -300,7 +306,17 @@ Examples:
                 )
                 print(json.dumps(result, indent=2))
                 sys.exit(0)
-        except (LocalLabError, OSError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
+
+            if args.lab_cov_fuzz:
+                from units.coverage_fuzzer import LocalCoverageFuzzer
+
+                result = LocalCoverageFuzzer(config).fuzz_module_target(
+                    args.lab_cov_fuzz, args.lab_cov_seed, args.lab_fuzz_cases
+                )
+                print(json.dumps(result, indent=2))
+                sys.exit(0 if result['crashes'] == 0 else 2)
+        except (LocalLabError, OSError, RuntimeError, ValueError, json.JSONDecodeError,
+                ImportError) as exc:
             print(f"[BLOCKED] Local lab operation failed: {exc}")
             sys.exit(1)
 

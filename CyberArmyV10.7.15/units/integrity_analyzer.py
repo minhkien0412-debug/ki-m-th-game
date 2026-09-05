@@ -34,6 +34,8 @@ class IntegrityAnalyzer:
         self.bounds: Dict[str, Dict[str, float]] = self.config.get('bounds', {}) or {}
         # Columns to run robust-outlier detection on; empty means auto-detect.
         self.outlier_columns: List[str] = self.config.get('outlier_columns', []) or []
+        # Declarative, game-specific anti-cheat rules (see AntiCheatRuleEngine).
+        self.rules: List[Dict[str, Any]] = self.config.get('rules', []) or []
 
     # ------------------------------------------------------------------ stats
     @staticmethod
@@ -180,6 +182,13 @@ class IntegrityAnalyzer:
                      'samples': outliers[:self.max_samples]},
                     signature=f'integrity|outlier|{name}',
                 ))
+
+        # 4) Declarative game-specific anti-cheat rules.
+        if self.rules:
+            from .anticheat_rules import AntiCheatRuleEngine
+            findings.extend(
+                AntiCheatRuleEngine(self.rules, self.max_samples).evaluate(columns)
+            )
 
         severity_rank = {'critical': 0, 'high': 1, 'medium': 2, 'low': 3, 'info': 4}
         findings.sort(key=lambda f: severity_rank.get(f['severity'], 5))
