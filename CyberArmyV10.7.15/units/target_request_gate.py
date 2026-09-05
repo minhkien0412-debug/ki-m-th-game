@@ -3,14 +3,16 @@ Target Request Gate Module
 Safe request gateway with multiple security checks
 """
 
+import ipaddress
 import requests
 import threading
 import time
 from collections import deque
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, List, Optional, Tuple
 from urllib.parse import urljoin, urlparse
 from .dns_ip_gate import DNSIPGate
 from .canonicalizer import Canonicalizer
+from .pinned_connection import pin_host
 from .secret_redactor import SecretRedactor
 
 
@@ -26,6 +28,9 @@ class TargetRequestGate:
         self._concurrency_gate = threading.BoundedSemaphore(concurrent)
         self._rate_lock = threading.Lock()
         self._request_times = deque()
+        # Per-thread map of the host -> validated IP that must be used for the
+        # next connection, so the address checked is the address dialed.
+        self._pin_state = threading.local()
         target_config = config.get('target', {})
         
         # Initialize safety components
@@ -82,18 +87,26 @@ class TargetRequestGate:
     def _send_once(self, method: str, url: str, headers: Dict[str, str],
                    params: Optional[Dict[str, Any]], data: Optional[Any],
                    timeout: int) -> requests.Response:
-        """Send one validated request without automatically following redirects."""
+        """Send one validated request without automatically following redirects.
+
+        The connection is pinned to the IP address that ``validate_before_request``
+        already resolved and approved, so a hostile resolver cannot rebind the
+        name to a private address between the check and the socket connect.
+        """
         self._wait_for_rate_limit()
+        host = (urlparse(url).hostname or '').lower().rstrip('.')
+        pinned_ip = self._take_pin(host)
         with self._concurrency_gate:
-            return self.session.request(
-                method=method,
-                url=url,
-                headers=headers,
-                params=params,
-                data=data,
-                timeout=timeout,
-                allow_redirects=False,
-            )
+            with pin_host(host, pinned_ip):
+                return self.session.request(
+                    method=method,
+                    url=url,
+                    headers=headers,
+                    params=params,
+                    data=data,
+                    timeout=timeout,
+                    allow_redirects=False,
+                )
 
     @staticmethod
     def _origin(url: str) -> Tuple[str, Optional[str], Optional[int]]:
@@ -101,19 +114,69 @@ class TargetRequestGate:
         parsed = urlparse(url)
         default_port = 443 if parsed.scheme.lower() == 'https' else 80
         return parsed.scheme.lower(), parsed.hostname, parsed.port or default_port
-    
+
+    def _pins(self) -> Dict[str, str]:
+        pins = getattr(self._pin_state, 'pins', None)
+        if pins is None:
+            pins = {}
+            self._pin_state.pins = pins
+        return pins
+
+    def _remember_pin(self, host: str, ip: Optional[str]) -> None:
+        """Record the validated IP to dial for ``host`` on the next connection."""
+        if not host:
+            return
+        pins = self._pins()
+        if ip:
+            pins[host] = ip
+        else:
+            pins.pop(host, None)
+
+    def _take_pin(self, host: str) -> Optional[str]:
+        """Return (without consuming) the pinned IP for ``host``, if any."""
+        if not host:
+            return None
+        return self._pins().get(host)
+
+    @staticmethod
+    def _choose_pin_ip(host: str, ips: List[str]) -> Optional[str]:
+        """Pick a validated address to pin, or ``None`` when pinning is moot.
+
+        A host that is already an IP literal cannot be rebound, so it needs no
+        pin. Otherwise prefer an IPv4 address (widest reachability) and fall
+        back to the first validated address.
+        """
+        try:
+            ipaddress.ip_address(host)
+            return None
+        except ValueError:
+            pass
+        for ip in ips:
+            try:
+                if isinstance(ipaddress.ip_address(ip), ipaddress.IPv4Address):
+                    return ip
+            except ValueError:
+                continue
+        return ips[0] if ips else None
+
     def validate_before_request(self, url: str) -> Tuple[bool, Optional[str]]:
-        """Validate URL before making request"""
+        """Validate URL before making request.
+
+        Resolves the host exactly once and pins the approved address so the
+        subsequent connection cannot be redirected to a blocked IP.
+        """
         # Check scope
         is_valid, error = self.canonicalizer.validate_url(url)
         if not is_valid:
             return False, f"Scope violation: {error}"
-        
-        # Check DNS/IP safety
-        is_safe, error = self.dns_gate.validate_url(url)
+
+        # Resolve once, validate every returned address, and remember one to pin.
+        is_safe, error, ips = self.dns_gate.safe_request_check(url)
         if not is_safe:
             return False, f"DNS/IP safety check failed: {error}"
-        
+
+        host = (urlparse(url).hostname or '').lower().rstrip('.')
+        self._remember_pin(host, self._choose_pin_ip(host, ips))
         return True, None
     
     def make_request(self, url: str, method: str = 'GET', 
@@ -123,7 +186,10 @@ class TargetRequestGate:
                     timeout: int = 30,
                     allow_redirects: bool = True) -> Optional[requests.Response]:
         """Make a safe HTTP request through the gate"""
-        
+
+        # Drop any pins left over from an earlier request on this thread.
+        self._pins().clear()
+
         # Pre-request validation
         is_valid, error = self.validate_before_request(url)
         if not is_valid:

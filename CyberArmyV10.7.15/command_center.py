@@ -446,33 +446,56 @@ Examples:
         print("\n[Security Scan] Starting...")
         print("NOTE: Full scan requires proper authorization.")
         print("Running in SAFE/PASSIVE mode only.")
-        
+        print("This build performs passive/safe analysis only: it never")
+        print("generates active or exploit traffic and never fabricates findings.")
+
         # Import and run scan components
         from units.mission_store import MissionStore
         from units.finding_engine import FindingEngine
-        
+        from units.safe_validator import SafeValidator
+        from units.validation_context import ValidationContext
+        from units.validators.reflection import ReflectionValidator
+        from units.validators.authorization_boundary import (
+            AuthorizationBoundaryValidator,
+        )
+
         mission_store = MissionStore()
         finding_engine = FindingEngine(config)
-        
+
         target_name = config.get('target', {}).get('name', 'Unknown')
         base_url = config.get('target', {}).get('base_url', '')
-        
+
         mission_id = mission_store.create_mission(target_name, base_url)
         print(f"Mission ID: {mission_id}")
-        
-        # Simulate findings for demo
-        finding_engine.create_finding(
-            finding_type='info_disclosure',
-            title='Information Disclosure Test',
-            severity='info',
-            description='This is a test finding demonstrating the system.'
+
+        # Run only the registered SAFE (passive) validators. They analyze data
+        # already collected and report real findings; none are simulated.
+        registry = SafeValidator(config)
+        registry.register_validator('reflection', ReflectionValidator(config))
+        registry.register_validator(
+            'authorization_boundary', AuthorizationBoundaryValidator(config)
         )
-        
+        context = ValidationContext(mission_id, config)
+        for result in registry.run_all_validators(context):
+            for finding in result.get('findings', []):
+                finding_engine.create_finding(
+                    finding_type=finding.get('type', 'info'),
+                    title=finding.get('title', 'Untitled finding'),
+                    severity=finding.get('severity', 'info'),
+                    url=finding.get('url', ''),
+                    description=finding.get('description', ''),
+                )
+
         summary = finding_engine.get_summary()
-        print(f"\nFindings Summary:")
+        print(f"\nSafe validators run: {len(registry.get_all_validators())}")
+        print(f"Findings Summary:")
         print(f"  Total: {summary['total']}")
         print(f"  By Severity: {summary['by_severity']}")
-        
+        if summary['total'] == 0:
+            print("  No findings from passive analysis. Active vulnerability")
+            print("  testing is out of scope for this build; use the isolated")
+            print("  lab or HackerOne safe-mode tools for hands-on validation.")
+
         # Generate report
         from units.report_generator import ReportGenerator
         report_gen = ReportGenerator(config)

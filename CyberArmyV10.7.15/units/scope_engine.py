@@ -52,22 +52,22 @@ class ScopeEngine:
         
         # Check blocked paths first
         for blocked in self.blocked_paths:
-            if self._match_pattern(path, blocked):
+            if self._matches_blocked_pattern(path, blocked):
                 return False, f"Path matches blocked pattern: {blocked}"
-        
+
         # If no allowed_paths defined, all non-blocked paths are allowed
         if not self.allowed_paths:
             return True, None
-        
+
         # Check if path matches any allowed pattern
         for allowed in self.allowed_paths:
             if self._match_pattern(path, allowed):
                 return True, None
-        
+
         return False, "Path not in allowed list"
-    
+
     def _match_pattern(self, path: str, pattern: str) -> bool:
-        """Match path against pattern (supports * wildcard)"""
+        """Match path against an allow pattern (supports * wildcard)"""
         if pattern.endswith('*'):
             prefix = pattern[:-1]
             return path.startswith(prefix)
@@ -76,6 +76,25 @@ class ScopeEngine:
             return path.endswith(suffix)
         else:
             return path == pattern
+
+    @staticmethod
+    def _matches_blocked_pattern(path: str, pattern: str) -> bool:
+        """Match a path against a block pattern conservatively.
+
+        Case-insensitive, and a directory pattern like ``/admin/*`` also blocks
+        the bare ``/admin`` and ``/admin/`` so the blocklist cannot be dodged
+        with a missing slash or a change of case.
+        """
+        p = path.lower()
+        pat = pattern.lower()
+        if pat.endswith('/*'):
+            base = pat[:-2]
+            return p == base or p.startswith(base + '/')
+        if pat.endswith('*'):
+            return p.startswith(pat[:-1])
+        if pat.startswith('*'):
+            return p.endswith(pat[1:])
+        return p == pat
     
     def is_parameter_allowed(self, param_name: str) -> bool:
         """Check if parameter is allowed (not in blocked list)"""
@@ -129,29 +148,18 @@ class ScopeEngine:
         }
     
     def normalize_url(self, url: str) -> str:
-        """Normalize URL for consistent comparison"""
-        parsed = urlparse(url)
-        
-        # Lowercase scheme and host
-        scheme = parsed.scheme.lower()
-        netloc = parsed.netloc.lower()
-        
-        # Normalize path
-        path = parsed.path
-        if not path:
-            path = '/'
-        
-        # Remove trailing slashes except for root
-        while path != '/' and path.endswith('/'):
-            path = path[:-1]
-        
-        # Rebuild URL
-        normalized = f"{scheme}://{netloc}{path}"
-        if parsed.query:
-            normalized += f"?{parsed.query}"
-        
-        return normalized
-    
+        """Normalize URL for consistent comparison.
+
+        Delegates to :class:`Canonicalizer` so scope comparison and the request
+        gate share one normalization implementation (correct IPv6 bracketing,
+        port handling, and ``.``/``..`` resolution) instead of drifting apart.
+        """
+        from .canonicalizer import Canonicalizer
+
+        return Canonicalizer(
+            self.allowed_hosts, self.allowed_paths, self.blocked_paths
+        ).normalize_url(url)
+
     def extract_base_domain(self, host: str) -> str:
         """Extract base domain from host (removes subdomains)"""
         host = host.split(':')[0]  # Remove port

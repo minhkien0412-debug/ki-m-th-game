@@ -1,46 +1,23 @@
 """
 CyberArmy V10.7.15 - Units Package
 Core modules for game security testing system
+
+Submodules are imported lazily (PEP 562): importing ``units`` or a single unit
+does not drag in every other unit's third-party dependencies. This keeps the
+fail-closed validate-only flows (``--console-validate``, ``--lab-validate``,
+``--h1-validate-profile``) runnable without the heavier web-analysis stack
+(e.g. beautifulsoup4, aiohttp) that only a couple of units actually need.
 """
+
+import importlib
 
 __version__ = "10.7.15"
 __author__ = "CyberArmy Security Team"
 
-from . import canonicalizer
-from . import dns_ip_gate
-from . import secret_redactor
-from . import config_validator
-from . import scope_engine
-from . import policy_engine
-from . import program_policy
-from . import mission_store
-from . import evidence_store
-from . import target_request_gate
-from . import external_intel_client
-from . import recon_engine
-from . import web_analyzer
-from . import api_analyzer
-from . import code_analyst
-from . import safe_validator
-from . import finding_engine
-from . import report_generator
-from . import candidate_rules_engine
-from . import validation_context
-from . import hackerone_engagement
-from . import hackerone_report
-from . import hackerone_runner
-from . import local_lab_policy
-from . import api_boundary_lab
-from . import protocol_corpus
-from . import observation_instrumentation
-from . import local_crash_fuzzer
-from . import console_lab_policy
-from . import console_kit_adapter
-from . import console_artifacts
-
 __all__ = [
     'canonicalizer',
     'dns_ip_gate',
+    'pinned_connection',
     'secret_redactor',
     'config_validator',
     'scope_engine',
@@ -71,3 +48,18 @@ __all__ = [
     'console_kit_adapter',
     'console_artifacts',
 ]
+
+_SUBMODULES = frozenset(__all__)
+
+
+def __getattr__(name):
+    """Import a submodule on first attribute access (PEP 562)."""
+    if name in _SUBMODULES:
+        module = importlib.import_module(f"{__name__}.{name}")
+        globals()[name] = module
+        return module
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__():
+    return sorted(set(globals()) | _SUBMODULES)
