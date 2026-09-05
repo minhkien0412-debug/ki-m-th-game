@@ -38,6 +38,47 @@ which you have explicit authorization.
 python -m unittest discover -s tests -v
 ```
 
+## Passive analysis and findings
+
+The `--scan` command runs only SAFE, passive validators over evidence that was
+already collected for the mission (nothing is injected and no active traffic is
+generated). When collected traffic exists, the validators report real,
+evidence-backed findings:
+
+- `security_headers` — missing/weak security headers (CSP, HSTS,
+  X-Content-Type-Options, clickjacking protection, Referrer-Policy) and session
+  cookies missing `Secure` / `HttpOnly` / `SameSite`.
+- `reflection` — test markers reflected unencoded in response bodies (possible
+  injection sink for manual XSS review).
+- `authorization_boundary` — sensitive endpoints that returned success with no
+  authorization on the request, and inconsistent auth enforcement.
+
+Findings are de-duplicated by a stable signature (repeats increment an
+`occurrences` count) and sorted by severity. With no collected evidence the scan
+reports nothing — it never fabricates a result.
+
+## Offline game-integrity / anti-cheat analysis
+
+`--analyze-integrity` runs an offline, defensive anomaly triage over a telemetry
+or event CSV that you own. It makes no network contact; it flags values that are
+physically impossible or statistically anomalous (time scaling, speed hacks,
+score injection). Configure optional hard bounds under an `integrity` section in
+`config.yaml`:
+
+```yaml
+integrity:
+  mad_threshold: 6.0
+  bounds:
+    player_speed_mps: {min: 0, max: 12}
+```
+
+```bash
+python command_center.py --config config.yaml --analyze-integrity telemetry/owned-session.csv
+```
+
+It is a triage aid, not a full anti-cheat runtime: it surfaces rows worth a
+human's attention with the evidence for why.
+
 ## PlayStation HackerOne safe mode
 
 This mode is intentionally fail-closed. It does not contain a built-in list of
