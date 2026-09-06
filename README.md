@@ -155,6 +155,18 @@ findings, filter to the HackerOne scope, and write a report:
 python command_center.py --config config.yaml --zap-import zap-alerts.json
 ```
 
+Produce `zap-alerts.json` from ZAP itself — either **Report → Generate Report →
+Traditional JSON Report** in the GUI, or the daemon API
+(`curl "http://127.0.0.1:8090/JSON/core/view/alerts/?apikey=KEY&baseurl=https://target" -o zap-alerts.json`).
+Both the flat `{"alerts":[…]}` API shape and the grouped
+`{"site":[{"alerts":[{"instances":[…]}]}]}` report shape are supported. To try
+the pipeline before you have a real export, a sample is included:
+
+```bash
+python command_center.py --config config.playstation.yaml \
+  --zap-import examples/zap_alerts.example.json
+```
+
 ZAP alerts are *scanner output*: verify each manually and do **not** submit raw
 scanner output where a program excludes it (PlayStation does).
 

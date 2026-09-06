@@ -1,6 +1,8 @@
 """Tests for ZAP import and the fail-closed ZAP orchestrator."""
 
 import unittest
+from pathlib import Path
+from urllib.parse import urlparse
 
 from units.zap_import import normalize_alerts, ZapFindingImporter
 from units.zap_orchestrator import ZapOrchestrator, ZapError
@@ -62,6 +64,37 @@ class TestZapImport(unittest.TestCase):
         urls = [f['url'] for f in findings]
         self.assertIn('https://a.playstation.net/x', urls)
         self.assertNotIn('https://evil.example/y', urls)
+
+
+class TestZapInstances(unittest.TestCase):
+    def test_instances_are_expanded_per_uri(self):
+        data = {'site': [{'alerts': [{'alert': 'X', 'riskcode': '2', 'instances': [
+            {'uri': 'https://a.example/1', 'param': 'p', 'evidence': 'e1'},
+            {'uri': 'https://a.example/2', 'param': 'q', 'evidence': 'e2'},
+        ]}]}]}
+        findings = normalize_alerts(data)
+        self.assertEqual(len(findings), 2)
+        self.assertEqual({urlparse(f['url']).path for f in findings}, {'/1', '/2'})
+
+
+class TestZapExampleImport(unittest.TestCase):
+    def test_example_file_expands_and_filters_scope(self):
+        cfg = {'hackerone': {'enabled': True, 'scope_assets': [
+            {'type': 'domain', 'identifier': 'store.playstation.com',
+             'eligible_for_submission': True, 'allowed_actions': ['reporting']},
+            {'type': 'domain', 'identifier': 'my.account.sony.com',
+             'eligible_for_submission': True, 'allowed_actions': ['reporting']},
+            {'type': 'domain', 'identifier': '*.playstation.com',
+             'eligible_for_submission': False, 'allowed_actions': ['reporting']},
+        ]}}
+        path = str(Path(__file__).resolve().parent.parent / 'examples'
+                   / 'zap_alerts.example.json')
+        findings = ZapFindingImporter(cfg).import_file(path)
+        hosts = {urlparse(f['url']).hostname for f in findings}
+        self.assertIn('store.playstation.com', hosts)
+        self.assertIn('my.account.sony.com', hosts)
+        self.assertNotIn('random.playstation.com', hosts)  # only matches ineligible wildcard
+        self.assertNotIn('evil.example', hosts)             # out of scope
 
 
 class TestZapAuthorize(unittest.TestCase):

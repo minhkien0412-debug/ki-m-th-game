@@ -54,17 +54,17 @@ def normalize_alerts(data: Any,
                      in_scope: Optional[Callable[[str], bool]] = None) -> List[Dict[str, Any]]:
     """Convert a parsed ZAP export into finding dicts, deduped by signature."""
     findings: Dict[str, Dict[str, Any]] = {}
-    for alert in _iter_raw_alerts(data):
+    def _add(alert, url, param, evidence):
         name = str(alert.get('alert') or alert.get('name') or 'ZAP alert').strip()
-        url = str(alert.get('url') or alert.get('uri') or '').strip()
+        url = str(url or '').strip()
         host = (urlparse(url).hostname or '') if url else ''
         if in_scope is not None and host and not in_scope(host):
-            continue
-        param = str(alert.get('param', '') or '')
+            return
+        param = str(param or '')
         signature = f'zap|{name}|{host}|{param}'
         if signature in findings:
             findings[signature]['evidence']['occurrences'] += 1
-            continue
+            return
         description = str(alert.get('description') or alert.get('desc') or '').strip()
         solution = str(alert.get('solution') or '').strip()
         findings[signature] = {
@@ -75,7 +75,7 @@ def normalize_alerts(data: Any,
             'description': (description + (f'\n\nSolution: {solution}' if solution else '')).strip(),
             'evidence': {
                 'param': param,
-                'evidence': str(alert.get('evidence', '') or ''),
+                'evidence': str(evidence or ''),
                 'cweid': alert.get('cweid'),
                 'wascid': alert.get('wascid'),
                 'zap_risk': alert.get('risk') or alert.get('riskdesc'),
@@ -84,6 +84,20 @@ def normalize_alerts(data: Any,
             'signature': signature,
             'confidence': _confidence(alert),
         }
+
+    for alert in _iter_raw_alerts(data):
+        # The traditional JSON report groups occurrences under "instances";
+        # expand those so each URL is captured and scope-filtered. Otherwise
+        # fall back to the flat top-level url/param (core/view/alerts shape).
+        instances = alert.get('instances')
+        if isinstance(instances, list) and instances:
+            for inst in instances:
+                if isinstance(inst, dict):
+                    _add(alert, inst.get('uri') or inst.get('url'),
+                         inst.get('param'), inst.get('evidence'))
+        else:
+            _add(alert, alert.get('url') or alert.get('uri'),
+                 alert.get('param'), alert.get('evidence'))
     return list(findings.values())
 
 
