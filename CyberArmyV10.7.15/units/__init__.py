@@ -35,6 +35,8 @@ __all__ = [
     'safe_validator',
     'finding_engine',
     'integrity_analyzer',
+    'zap_import',
+    'zap_orchestrator',
     'report_generator',
     'candidate_rules_engine',
     'validation_context',
