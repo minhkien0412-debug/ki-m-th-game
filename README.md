@@ -158,8 +158,19 @@ python command_center.py --config config.yaml --zap-import zap-alerts.json
 ZAP alerts are *scanner output*: verify each manually and do **not** submit raw
 scanner output where a program excludes it (PlayStation does).
 
-**Drive ZAP spider / active scan from the terminal** (requires a running ZAP and
-`pip install zaproxy`). Automated scanning sends traffic, so it is authorized
+**Drive ZAP spider / active scan from the terminal.** This needs the ZAP
+application itself running as a daemon **and** the Python client:
+
+```bash
+sudo apt install zaproxy          # the ZAP application (Kali/Debian)
+pip install zaproxy               # the Python API client (into your .venv)
+zaproxy -daemon -host 127.0.0.1 -port 8090 -config api.key=CHANGEME &
+```
+
+Then point the tool at that daemon (set `zap.api_url: "http://127.0.0.1:8090"`
+and `zap.api_key`) and give `--zap-active-scan` a **real** URL with a real port
+(e.g. `http://127.0.0.1:3000/`, your own app under test) — not the literal
+`PORT` placeholder. Automated scanning sends traffic, so it is authorized
 **only** for self-hosted loopback targets, or hosts you explicitly attest are
 permitted. It **refuses to scan a HackerOne in-scope target** — PlayStation and
 most programs list scanner output as out of scope and forbid disruption; use ZAP

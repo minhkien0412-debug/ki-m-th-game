@@ -91,6 +91,16 @@ class TestZapAuthorize(unittest.TestCase):
         ok, _ = ZapOrchestrator({}).authorize('https://random.example/')
         self.assertFalse(ok)
 
+    def test_placeholder_port_is_refused_cleanly(self):
+        ok, reason = ZapOrchestrator({}).authorize('http://127.0.0.1:PORT/')
+        self.assertFalse(ok)
+        self.assertIn('port', reason.lower())
+
+    def test_non_http_scheme_is_refused(self):
+        ok, reason = ZapOrchestrator({}).authorize('ftp://127.0.0.1/')
+        self.assertFalse(ok)
+        self.assertIn('http', reason.lower())
+
 
 class FakeZap:
     class _Spider:
@@ -131,6 +141,15 @@ class TestZapScanFlow(unittest.TestCase):
         with self.assertRaises(ZapError):
             ZapOrchestrator(h1_config()).scan('https://a.playstation.net/', zap=fake)
         self.assertFalse(fake.ascan.called)
+
+    def test_zap_connection_failure_becomes_clean_error(self):
+        class RaisingZap(FakeZap):
+            def urlopen(self, url):
+                raise ConnectionError('connection refused')
+
+        with self.assertRaises(ZapError) as ctx:
+            ZapOrchestrator({}).scan('http://127.0.0.1:8090/', zap=RaisingZap())
+        self.assertIn('ZAP', str(ctx.exception))
 
 
 if __name__ == '__main__':
