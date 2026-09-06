@@ -144,6 +144,43 @@ python command_center.py --config config.yaml \
   --lab-cov-fuzz mypackage.parser_harness:parse --lab-cov-seed samples/seed.bin --lab-fuzz-cases 100
 ```
 
+## OWASP ZAP integration
+
+Two ways to work with OWASP ZAP, both fail-closed:
+
+**Import ZAP alerts for triage** — read a ZAP JSON export, normalize it to
+findings, filter to the HackerOne scope, and write a report:
+
+```bash
+python command_center.py --config config.yaml --zap-import zap-alerts.json
+```
+
+ZAP alerts are *scanner output*: verify each manually and do **not** submit raw
+scanner output where a program excludes it (PlayStation does).
+
+**Drive ZAP spider / active scan from the terminal** (requires a running ZAP and
+`pip install zaproxy`). Automated scanning sends traffic, so it is authorized
+**only** for self-hosted loopback targets, or hosts you explicitly attest are
+permitted. It **refuses to scan a HackerOne in-scope target** — PlayStation and
+most programs list scanner output as out of scope and forbid disruption; use ZAP
+as a passive proxy with manual testing for those.
+
+```yaml
+zap:
+  api_url: "http://127.0.0.1:8080"
+  api_key: ""                       # or set ZAP_API_KEY
+  spider_max_duration_min: 5
+  scan_poll_seconds: 5
+  automated_testing_allowed: false  # true ONLY for a program whose policy permits it
+  authorization_reference: ""
+  allowed_hosts: []                 # hosts you are authorized to actively scan
+```
+
+```bash
+python command_center.py --config config.yaml --zap-scan http://127.0.0.1:8080/
+python command_center.py --config config.yaml --zap-active-scan http://127.0.0.1:8080/
+```
+
 ## PlayStation HackerOne safe mode
 
 This mode is intentionally fail-closed. It does not contain a built-in list of

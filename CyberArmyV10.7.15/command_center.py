@@ -102,6 +102,15 @@ Examples:
     parser.add_argument('--analyze-integrity', metavar='TELEMETRY_CSV',
                         help='Offline anti-cheat/integrity anomaly analysis of an '
                              'owned telemetry CSV (no network)')
+    parser.add_argument('--zap-import', metavar='ZAP_EXPORT_JSON',
+                        help='Import OWASP ZAP alerts (JSON) as scope-filtered '
+                             'findings for triage')
+    parser.add_argument('--zap-scan', metavar='URL',
+                        help='ZAP spider + passive scan of an authorized/self-hosted '
+                             'target (refuses HackerOne targets)')
+    parser.add_argument('--zap-active-scan', metavar='URL',
+                        help='ZAP active scan of an authorized/self-hosted target '
+                             '(refuses HackerOne targets)')
 
     args = parser.parse_args()
     
@@ -160,6 +169,47 @@ Examples:
             sys.exit(1)
         print(json.dumps(result, indent=2))
         sys.exit(0 if result['finding_count'] == 0 else 2)
+
+    if args.zap_import:
+        from units.zap_import import ZapFindingImporter
+        from units.finding_engine import FindingEngine
+        from units.report_generator import ReportGenerator
+
+        try:
+            findings = ZapFindingImporter(config).import_file(args.zap_import)
+        except (OSError, ValueError) as exc:
+            print(f"[BLOCKED] ZAP import failed: {exc}")
+            sys.exit(1)
+        engine = FindingEngine(config)
+        engine.add_findings(findings)
+        summary = engine.get_summary()
+        print(f"Imported ZAP alerts (in-scope): {summary['total']}")
+        print(f"  By severity: {summary['by_severity']}")
+        report_gen = ReportGenerator(config)
+        path = report_gen.save_report(
+            report_gen.generate_report({'mission_id': 'zap-import'},
+                                       engine.export_findings()),
+            'zap_import_report.md',
+        )
+        print(f"Report saved to: {path}")
+        print("NOTE: ZAP alerts are scanner output — verify each manually and do NOT")
+        print("submit raw scanner output where a program excludes it (e.g. PlayStation).")
+        sys.exit(0)
+
+    if args.zap_scan or args.zap_active_scan:
+        from units.zap_orchestrator import ZapOrchestrator, ZapError
+
+        target = args.zap_active_scan or args.zap_scan
+        active = bool(args.zap_active_scan)
+        try:
+            result = ZapOrchestrator(config).scan(target, active=active)
+        except ZapError as exc:
+            print(f"[BLOCKED] {exc}")
+            sys.exit(1)
+        print(f"ZAP {result['mode']} on {result['target']}")
+        print(f"  Alerts: {result['alert_count']} | By severity: {result['by_severity']}")
+        print(result['note'])
+        sys.exit(0)
 
     h1_requested = any((
         args.h1_validate_profile,
