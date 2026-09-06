@@ -204,6 +204,43 @@ class TestHackerOneRunner(unittest.TestCase):
         fake_gate.close.assert_called_once_with()
 
 
+class TestReconScope(unittest.TestCase):
+    def _config(self, tmp):
+        cfg = valid_config()
+        cfg['hackerone']['observation_output_dir'] = tmp
+        cfg['hackerone']['scope_assets'].append({
+            'type': 'domain', 'identifier': '*.ineligible.example',
+            'eligible_for_submission': False, 'allowed_actions': ['passive_recon'],
+        })
+        return cfg
+
+    def test_sweeps_eligible_wildcards_and_dedupes(self):
+        import units.hackerone_runner as runner_mod
+        queried = []
+
+        class FakeRecon:
+            def __init__(self, config):
+                pass
+
+            def run_passive_recon(self, root):
+                queried.append(root)
+                return {'subdomains': ['a.in-scope.example', 'a.in-scope.example',
+                                       'evil.example']}
+
+            def close(self):
+                pass
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.object(runner_mod, 'ReconEngine', FakeRecon):
+                result = HackerOneRunner(self._config(tmp)).recon_scope()
+                self.assertEqual(result['roots_queried'], ['in-scope.example'])
+                self.assertNotIn('ineligible.example', queried)     # ineligible skipped
+                self.assertIn('a.in-scope.example', result['in_scope_hosts'])  # discovered
+                self.assertIn('in-scope.example', result['in_scope_hosts'])    # known domain
+                self.assertNotIn('evil.example', result['in_scope_hosts'])     # out of scope
+                self.assertTrue(Path(result['saved_to']).exists())
+
+
 class TestWildcardReconRoot(unittest.TestCase):
     def _config(self):
         cfg = valid_config()

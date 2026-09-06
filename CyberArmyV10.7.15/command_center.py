@@ -53,6 +53,9 @@ Examples:
                         help='Create a local HackerOne Markdown report draft')
     parser.add_argument('--h1-passive-recon', metavar='TARGET',
                         help='Run scope-filtered passive certificate reconnaissance')
+    parser.add_argument('--h1-recon-scope', action='store_true',
+                        help='Sweep every eligible scope asset into one deduplicated '
+                             'in-scope host list (passive crt.sh only)')
     parser.add_argument('--h1-observe-head', metavar='URL',
                         help='Make one authorized HEAD request and save redacted metadata')
     parser.add_argument('--lab-validate', action='store_true',
@@ -164,6 +167,7 @@ Examples:
         args.h1_authorize,
         args.h1_draft_report,
         args.h1_passive_recon,
+        args.h1_recon_scope,
         args.h1_observe_head,
     ))
     if h1_requested:
@@ -228,6 +232,24 @@ Examples:
             print(f"In-scope subdomains found: {len(result['in_scope_subdomains'])}")
             for hostname in result['in_scope_subdomains']:
                 print(f"  - {hostname}")
+            print(result['note'])
+            sys.exit(0)
+
+        if args.h1_recon_scope:
+            from units.hackerone_runner import HackerOneRunner
+
+            try:
+                result = HackerOneRunner(config).recon_scope()
+            except (EngagementError, OSError, RuntimeError, ValueError) as exc:
+                print(f"[BLOCKED] Scope reconnaissance failed: {exc}")
+                sys.exit(1)
+            print(f"Roots queried: {', '.join(result['roots_queried']) or '(none)'}")
+            for root, count in result['per_root_in_scope'].items():
+                print(f"  {root}: {count} in-scope host(s)")
+            print(f"\nConsolidated in-scope hosts: {result['host_count']}")
+            for hostname in result['in_scope_hosts']:
+                print(f"  - {hostname}")
+            print(f"\nSaved to: {result['saved_to']}")
             print(result['note'])
             sys.exit(0)
 
