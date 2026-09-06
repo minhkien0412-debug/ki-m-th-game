@@ -210,8 +210,39 @@ class HackerOneEngagement:
     def _default_port(scheme: str) -> Optional[int]:
         return {'http': 80, 'https': 443}.get(scheme.lower())
 
-    def authorize(self, action: str, target: str) -> Dict[str, Any]:
-        """Authorize one low-impact action against one current in-scope asset."""
+    def find_wildcard_base_asset(self, target: str) -> Optional[Dict[str, Any]]:
+        """Return the eligible ``*.base`` asset whose base equals ``target``.
+
+        Passive certificate-transparency discovery enumerates subdomains of a
+        registrable domain. A wildcard such as ``*.playstation.net`` authorizes
+        those subdomains, so discovery rooted at the base ``playstation.net`` is
+        in bounds even though the apex itself is not a testable asset. This is
+        used ONLY for passive recon (a lookup against the public crt.sh service
+        that contacts no target); every discovered host is still filtered with
+        the strict ``find_scope_asset``.
+        """
+        parsed = urlparse(target if '://' in target else f'https://{target}')
+        hostname = (parsed.hostname or '').lower().rstrip('.')
+        if not hostname:
+            return None
+        for asset in self.assets:
+            if asset.get('eligible_for_submission', True) is False:
+                continue
+            if asset.get('type') != 'domain':
+                continue
+            identifier = str(asset.get('identifier', '')).strip().lower().rstrip('.')
+            if identifier.startswith('*.') and hostname == identifier[2:]:
+                return asset
+        return None
+
+    def authorize(self, action: str, target: str,
+                  recon_root: bool = False) -> Dict[str, Any]:
+        """Authorize one low-impact action against one current in-scope asset.
+
+        With ``recon_root=True`` (passive recon only), the base domain of an
+        eligible wildcard also authorizes, so subdomain discovery can be rooted
+        at the registrable domain.
+        """
         valid, errors, _ = self.validate_profile()
         if not valid:
             raise EngagementError('; '.join(errors))
@@ -223,6 +254,8 @@ class HackerOneEngagement:
             raise EngagementError(f'Action is not allowlisted: {normalized_action}')
 
         asset = self.find_scope_asset(target)
+        if asset is None and recon_root and normalized_action == 'passive_recon':
+            asset = self.find_wildcard_base_asset(target)
         if asset is None:
             raise EngagementError('Target is not in the manually verified scope')
 

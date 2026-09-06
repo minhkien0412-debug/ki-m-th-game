@@ -26,7 +26,7 @@ class HackerOneRunner:
 
     def passive_recon(self, target: str) -> Dict[str, Any]:
         """Query passive certificate transparency sources and filter to scope."""
-        self.engagement.authorize('passive_recon', target)
+        self.engagement.authorize('passive_recon', target, recon_root=True)
         parsed = urlparse(target if '://' in target else f'https://{target}')
         hostname = parsed.hostname or ''
 

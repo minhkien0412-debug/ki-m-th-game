@@ -204,5 +204,43 @@ class TestHackerOneRunner(unittest.TestCase):
         fake_gate.close.assert_called_once_with()
 
 
+class TestWildcardReconRoot(unittest.TestCase):
+    def _config(self):
+        cfg = valid_config()
+        cfg['hackerone']['scope_assets'] = [
+            {'type': 'domain', 'identifier': '*.wild.example',
+             'eligible_for_submission': True,
+             'allowed_actions': ['passive_recon', 'http_head', 'reporting']},
+            {'type': 'domain', 'identifier': '*.ineligible.example',
+             'eligible_for_submission': False,
+             'allowed_actions': ['passive_recon', 'reporting']},
+        ]
+        return cfg
+
+    def test_passive_recon_authorized_from_eligible_wildcard_base(self):
+        eng = HackerOneEngagement(self._config())
+        asset = eng.authorize('passive_recon', 'wild.example', recon_root=True)
+        self.assertEqual(asset['identifier'], '*.wild.example')
+
+    def test_apex_is_still_out_of_scope_for_active_actions(self):
+        eng = HackerOneEngagement(self._config())
+        # The apex is not a testable asset; only passive recon may root there.
+        self.assertIsNone(eng.find_scope_asset('wild.example'))
+        with self.assertRaises(EngagementError):
+            eng.authorize('http_head', 'wild.example')
+        with self.assertRaises(EngagementError):
+            eng.authorize('http_head', 'wild.example', recon_root=True)
+
+    def test_ineligible_wildcard_base_is_not_authorized(self):
+        eng = HackerOneEngagement(self._config())
+        with self.assertRaises(EngagementError):
+            eng.authorize('passive_recon', 'ineligible.example', recon_root=True)
+
+    def test_subdomain_still_matches_strictly(self):
+        eng = HackerOneEngagement(self._config())
+        asset = eng.authorize('http_head', 'a.wild.example')
+        self.assertEqual(asset['identifier'], '*.wild.example')
+
+
 if __name__ == '__main__':
     unittest.main()
