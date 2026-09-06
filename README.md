@@ -32,6 +32,39 @@ Reconnaissance and scanning remain blocked until the policy hash is valid, the
 policy is acknowledged, and the kill switch is disabled. Only test systems for
 which you have explicit authorization.
 
+## Deploy on Kali Linux (or Debian / Ubuntu)
+
+On a fresh Kali VM, one command clones-and-bootstraps: it creates an isolated
+virtualenv, installs the dependencies, and runs the test suite as a self-check.
+It never contacts a target — it only sets the tool up.
+
+```bash
+git clone https://github.com/minhkien0412-debug/ki-m-th-game.git
+cd ki-m-th-game
+./setup.sh              # runtime deps + unittest self-check
+```
+
+If `python3-venv`/`pip` or the `lxml` build is missing on a minimal image, let
+the script install the system packages first (needs sudo):
+
+```bash
+./setup.sh --apt        # apt-get the system packages, then set up
+./setup.sh --dev        # use the pinned lock set and run pytest (Python 3.12)
+```
+
+Then activate the environment and validate your profile before any testing:
+
+```bash
+source .venv/bin/activate
+cd CyberArmyV10.7.15
+python command_center.py --config config.yaml --validate
+```
+
+Kali is a means to run this authorized-testing toolkit; it does not grant
+authorization. Every active mode stays fail-closed — configure the relevant
+profile (`hackerone` / `local_lab` / `console_lab` / `integrity`) and only test
+systems you are explicitly permitted to.
+
 ## Tests
 
 ```bash
