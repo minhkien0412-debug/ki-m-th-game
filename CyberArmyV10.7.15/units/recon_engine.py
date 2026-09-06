@@ -13,7 +13,10 @@ class ReconEngine:
     def __init__(self, config: Dict[str, Any]):
         self.config = config
         self.recon_config = config.get('recon', {})
-        self.intel_client = ExternalIntelClient()
+        self.intel_client = ExternalIntelClient(
+            timeout=int(self.recon_config.get('crtsh_timeout', 60)),
+            retries=int(self.recon_config.get('crtsh_retries', 2)),
+        )
         self.discovered_hosts: List[Dict[str, Any]] = []
     
     def run_passive_recon(self, domain: str) -> Dict[str, Any]:

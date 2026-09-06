@@ -3,44 +3,73 @@ External Intelligence Client Module
 Call external APIs for reconnaissance (crt.sh, etc.)
 """
 
+import time
 import requests
 from typing import Dict, Any, Optional, List
 
 
 class ExternalIntelClient:
     """Client for external intelligence APIs"""
-    
-    def __init__(self, rate_limit: int = 5):
+
+    def __init__(self, rate_limit: int = 5, timeout: int = 60, retries: int = 2):
         self.rate_limit = rate_limit
+        self.timeout = timeout
+        self.retries = retries
         self.session = requests.Session()
         self.session.headers.update({
-            'User-Agent': 'CyberArmy-Intel-Client/10.7.15'
+            'User-Agent': 'CyberArmy-Intel-Client/10.7.15',
+            'Accept': 'application/json',
         })
-    
+
     def query_crtsh(self, domain: str) -> List[Dict[str, Any]]:
-        """Query crt.sh for certificate transparency logs"""
-        url = f"https://crt.sh/?q=%.{domain}&output=json"
-        
-        try:
-            response = self.session.get(url, timeout=30)
-            if response.status_code == 200:
-                data = response.json()
-                
-                # Extract unique subdomains
-                subdomains = set()
-                for entry in data:
-                    name = entry.get('name_value', '')
-                    for subdomain in name.split('\n'):
-                        subdomain = subdomain.strip().lower()
-                        if subdomain and '*' not in subdomain:
-                            subdomains.add(subdomain)
-                
-                return [{'subdomain': s, 'source': 'crt.sh'} for s in subdomains]
-            
-            return []
-        except Exception as e:
-            print(f"[crt.sh ERROR] {str(e)}")
-            return []
+        """Query crt.sh certificate transparency logs for subdomains.
+
+        crt.sh is public (it never contacts the target) but slow and prone to
+        transient 502/503/429 responses, so this uses a generous timeout, a few
+        retries, and — importantly — reports WHY a query returned nothing instead
+        of silently yielding an empty list. The query is passed via ``params`` so
+        the ``%`` wildcard is encoded correctly.
+        """
+        params = {'q': f'%.{domain}', 'output': 'json'}
+        last_reason = 'unknown error'
+
+        for attempt in range(self.retries + 1):
+            try:
+                response = self.session.get(
+                    'https://crt.sh/', params=params, timeout=self.timeout
+                )
+            except requests.exceptions.RequestException as exc:
+                last_reason = f'request error: {exc}'
+            else:
+                if response.status_code != 200:
+                    last_reason = f'HTTP {response.status_code}'
+                elif not response.text.strip():
+                    last_reason = 'empty response body'
+                else:
+                    try:
+                        data = response.json()
+                    except ValueError:
+                        last_reason = 'response was not valid JSON'
+                    else:
+                        subdomains = set()
+                        for entry in data:
+                            name = entry.get('name_value', '') or ''
+                            for sub in name.split('\n'):
+                                sub = sub.strip().lower()
+                                if sub and '*' not in sub:
+                                    subdomains.add(sub)
+                        print(f"[crt.sh] {domain}: {len(data)} cert rows, "
+                              f"{len(subdomains)} unique names")
+                        return [{'subdomain': s, 'source': 'crt.sh'}
+                                for s in sorted(subdomains)]
+
+            if attempt < self.retries:
+                time.sleep(2 ** attempt)
+
+        print(f"[crt.sh ERROR] {domain}: no data ({last_reason}). "
+              "crt.sh may be rate-limiting or unreachable; retry later, or check "
+              "the VM's internet/DNS.")
+        return []
     
     def query_dns(self, domain: str) -> Dict[str, Any]:
         """Query DNS records using public DNS"""
