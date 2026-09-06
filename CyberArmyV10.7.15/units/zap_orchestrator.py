@@ -44,7 +44,15 @@ class ZapOrchestrator:
 
     def authorize(self, url: str) -> Tuple[bool, Optional[str]]:
         """Decide whether automated scanning of ``url`` is permitted."""
-        host = (urlparse(url).hostname or '').lower().rstrip('.')
+        parsed = urlparse(url or '')
+        if parsed.scheme.lower() not in ('http', 'https'):
+            return False, f'Target must be an http(s) URL, got: {url!r}'
+        try:
+            parsed.port  # raises ValueError on a non-numeric port (e.g. ":PORT")
+        except ValueError:
+            return False, (f'Invalid port in target URL: {url!r} '
+                           '(use a real port number, e.g. http://127.0.0.1:8080/)')
+        host = (parsed.hostname or '').lower().rstrip('.')
         if not host:
             return False, 'Invalid URL: missing host'
 
@@ -97,21 +105,37 @@ class ZapOrchestrator:
 
         poll = int(self.zap_cfg.get('scan_poll_seconds', 5))
         max_spider = int(self.zap_cfg.get('spider_max_duration_min', 5))
+        api_url = self.zap_cfg.get('api_url', 'http://127.0.0.1:8080')
 
-        zap.urlopen(url)
-        spider_id = zap.spider.scan(url, maxchildren=None)
-        self._await(lambda: int(zap.spider.status(spider_id)), poll,
-                    max_spider * 60 // max(poll, 1))
-        # Let the passive scanner drain.
-        self._await(lambda: 100 if int(zap.pscan.records_to_scan) == 0 else 0, poll, 60)
+        # Any failure talking to ZAP (not running, wrong api_url, bad target URL)
+        # becomes a clean ZapError instead of an unhandled traceback.
+        try:
+            zap.urlopen(url)
+            spider_id = zap.spider.scan(url, maxchildren=None)
+            self._await(lambda: int(zap.spider.status(spider_id)), poll,
+                        max_spider * 60 // max(poll, 1))
+            # Let the passive scanner drain.
+            self._await(lambda: 100 if int(zap.pscan.records_to_scan) == 0 else 0, poll, 60)
 
-        active_ran = False
-        if active:
-            ascan_id = zap.ascan.scan(url)
-            self._await(lambda: int(zap.ascan.status(ascan_id)), poll, 3600 // max(poll, 1))
-            active_ran = True
+            active_ran = False
+            if active:
+                ascan_id = zap.ascan.scan(url)
+                self._await(lambda: int(zap.ascan.status(ascan_id)), poll,
+                            3600 // max(poll, 1))
+                active_ran = True
 
-        findings = normalize_alerts({'alerts': zap.core.alerts(baseurl=url)})
+            raw_alerts = zap.core.alerts(baseurl=url)
+        except ZapError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - normalize any ZAP/HTTP failure
+            raise ZapError(
+                f'Could not complete the ZAP scan of {url!r}. Check that ZAP is '
+                f'running and reachable at {api_url} (start it with '
+                f'"zaproxy -daemon -host 127.0.0.1 -port 8090 -config api.key=...") '
+                f'and that the target URL is valid. Underlying error: {exc}'
+            ) from exc
+
+        findings = normalize_alerts({'alerts': raw_alerts})
         by_sev: Dict[str, int] = {}
         for f in findings:
             by_sev[f['severity']] = by_sev.get(f['severity'], 0) + 1
