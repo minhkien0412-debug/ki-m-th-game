@@ -150,6 +150,11 @@ This mode is intentionally fail-closed. It does not contain a built-in list of
 PlayStation assets because program scope changes over time. Before each testing
 session:
 
+A filled-in starting point is provided at
+`examples/hackerone_playstation.example.yaml` (a dated scope snapshot). Copy it,
+then set your handle and refresh the review timestamp — do not rely on the
+snapshot; re-check the live page each session.
+
 1. Sign in to the official PlayStation program at
    <https://hackerone.com/playstation/policy_scopes>.
 2. Copy only currently in-scope assets into `config.yaml` under

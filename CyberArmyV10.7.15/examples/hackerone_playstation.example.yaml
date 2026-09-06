@@ -1,0 +1,84 @@
+# CyberArmy V10.7.15 - HackerOne PlayStation safe-mode profile (EXAMPLE)
+#
+# Scope snapshot copied from the official program page
+#   https://hackerone.com/playstation/policy_scopes  (page last updated 2026-05-16)
+#
+# BEFORE USE on your Kali VM:
+#   1. Set hackerone.researcher_handle to YOUR HackerOne handle.
+#   2. Set hackerone.scope_reviewed_at to the current UTC time each session
+#      (scope_max_age_days is 1 - a stale snapshot fail-closes).
+#   3. Re-check the live page; scope changes. Add/remove assets to match it.
+#   4. Verify every identifier verbatim against the UNtranslated page.
+#
+# The target/policy/rate_limit sections below only exist so the config passes
+# the top-level validator; HackerOne mode uses hackerone.scope_assets, not them.
+
+target:
+  name: "HackerOne PlayStation (safe mode)"
+  base_url: "https://example.invalid"
+  allowed_hosts: ["example.invalid"]
+
+policy:
+  raw_file: "policies/raw/banco_plata_policy.json"
+  manifest_file: "policies/manifest/banco_plata_manifest.json"
+  required_hash: "sha256:placeholder_hash_here"
+  acknowledged: false
+  kill_switch_enabled: true
+
+rate_limit:
+  requests_per_second: 1
+  requests_per_minute: 30
+  concurrent_connections: 1
+
+hackerone:
+  enabled: true
+  program_handle: "playstation"
+  policy_url: "https://hackerone.com/playstation/policy_scopes"
+  researcher_handle: ""            # <-- FILL IN your HackerOne handle
+  acknowledged_current_policy: true
+  human_in_the_loop: true
+  scope_reviewed_at: "2026-09-06T00:00:00Z"   # <-- refresh to now() each session
+  scope_max_age_days: 1
+  report_output_dir: "state/hackerone_drafts"
+  observation_output_dir: "state/hackerone_observations"
+  max_passive_results: 50
+
+  # Actions this fail-closed tool can perform. Web assets get the full safe set;
+  # hardware/app assets are recorded only for manual validation + reporting.
+  _web_actions: &web_actions ["passive_recon", "http_get", "http_head", "manual_validation", "reporting"]
+  _offline_actions: &offline_actions ["manual_validation", "reporting"]
+
+  scope_assets:
+    # --- Eligible domains (apex/subdomain, exact match) ---
+    - {type: domain, identifier: "www.playstation.com",            eligible_for_submission: true, allowed_actions: *web_actions}
+    - {type: domain, identifier: "web.np.playstation.com",         eligible_for_submission: true, allowed_actions: *web_actions}
+    - {type: domain, identifier: "wallets.api.playstation.com",    eligible_for_submission: true, allowed_actions: *web_actions}
+    - {type: domain, identifier: "transact.playstation.com",       eligible_for_submission: true, allowed_actions: *web_actions}  # VERIFY: auto-translated from "giao dịch" - confirm exact hostname
+    - {type: domain, identifier: "store.playstation.com",          eligible_for_submission: true, allowed_actions: *web_actions}
+    - {type: domain, identifier: "social.playstation.com",         eligible_for_submission: true, allowed_actions: *web_actions}
+    - {type: domain, identifier: "session-share.playstation.com",  eligible_for_submission: true, allowed_actions: *web_actions}
+    - {type: domain, identifier: "ps5.np.playstation.net",         eligible_for_submission: true, allowed_actions: *web_actions}
+    - {type: domain, identifier: "profile.playstation.com",        eligible_for_submission: true, allowed_actions: *web_actions}
+    - {type: domain, identifier: "my.playstation.com",             eligible_for_submission: true, allowed_actions: *web_actions}
+    - {type: domain, identifier: "my.account.sony.com",            eligible_for_submission: true, allowed_actions: *web_actions}
+    - {type: domain, identifier: "direct.playstation.com",         eligible_for_submission: true, allowed_actions: *web_actions}
+    - {type: domain, identifier: "compete.playstation.com",        eligible_for_submission: true, allowed_actions: *web_actions}
+    - {type: domain, identifier: "checkout.playstation.com",       eligible_for_submission: true, allowed_actions: *web_actions}
+    - {type: domain, identifier: "ca.account.sony.com",            eligible_for_submission: true, allowed_actions: *web_actions}
+    - {type: domain, identifier: "api.direct.playstation.com",     eligible_for_submission: true, allowed_actions: *web_actions}
+
+    # --- Eligible wildcards (match subdomains only, NOT the apex) ---
+    - {type: domain, identifier: "*.sonyentertainmentnetwork.com", eligible_for_submission: true, allowed_actions: *web_actions}
+    - {type: domain, identifier: "*.playstation.net",              eligible_for_submission: true, allowed_actions: *web_actions}
+    - {type: domain, identifier: "*.api.playstation.com",          eligible_for_submission: true, allowed_actions: *web_actions}
+
+    # --- In scope but NOT submission-eligible: recorded, never authorizes actions ---
+    - {type: domain, identifier: "*.playstation.com",              eligible_for_submission: false, allowed_actions: *web_actions}  # bounty ineligible per program
+
+    # --- Hardware / OS (exact name; offline validation + reporting only) ---
+    - {type: hardware, identifier: "PlayStation 5", eligible_for_submission: true, allowed_actions: *offline_actions}
+    - {type: hardware, identifier: "PlayStation 4", eligible_for_submission: true, allowed_actions: *offline_actions}
+
+    # --- Mobile apps (exact name; offline validation + reporting only) ---
+    - {type: hardware, identifier: "PlayStation App for iOS",     eligible_for_submission: true, allowed_actions: *offline_actions}
+    - {type: hardware, identifier: "PlayStation App for Android", eligible_for_submission: true, allowed_actions: *offline_actions}
