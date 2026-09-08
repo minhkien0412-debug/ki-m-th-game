@@ -37,7 +37,9 @@ hackerone:
   researcher_handle: ""            # <-- FILL IN your HackerOne handle
   acknowledged_current_policy: true
   human_in_the_loop: true
-  scope_reviewed_at: "2026-09-06T00:00:00Z"   # <-- refresh to now() each session
+  # TEMPLATE value: refresh scope_reviewed_at to the current UTC time each session.
+  # Once it is older than scope_max_age_days (below) the profile fail-closes.
+  scope_reviewed_at: "2026-09-08T00:00:00Z"
   scope_max_age_days: 1
   report_output_dir: "state/hackerone_drafts"
   observation_output_dir: "state/hackerone_observations"
@@ -53,7 +55,11 @@ hackerone:
     - {type: domain, identifier: "www.playstation.com",            eligible_for_submission: true, allowed_actions: *web_actions}
     - {type: domain, identifier: "web.np.playstation.com",         eligible_for_submission: true, allowed_actions: *web_actions}
     - {type: domain, identifier: "wallets.api.playstation.com",    eligible_for_submission: true, allowed_actions: *web_actions}
-    - {type: domain, identifier: "transact.playstation.com",       eligible_for_submission: true, allowed_actions: *web_actions}  # VERIFY: auto-translated from "giao dịch" - confirm exact hostname
+    # UNVERIFIED: "transact.playstation.com" was auto-translated from the Vietnamese
+    # word "giao dịch" (= "transaction") and is only a GUESS at the real hostname.
+    # Confirm the exact host verbatim on the official (untranslated) scope page, then
+    # uncomment. Left disabled so this example never authorizes an unverified host.
+    #- {type: domain, identifier: "transact.playstation.com",       eligible_for_submission: true, allowed_actions: *web_actions}
     - {type: domain, identifier: "store.playstation.com",          eligible_for_submission: true, allowed_actions: *web_actions}
     - {type: domain, identifier: "social.playstation.com",         eligible_for_submission: true, allowed_actions: *web_actions}
     - {type: domain, identifier: "session-share.playstation.com",  eligible_for_submission: true, allowed_actions: *web_actions}
